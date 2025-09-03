@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <RootNamespace>CleanArchitecture.Blazor.Application</RootNamespace>
+        <AssemblyName>CleanArchitecture.Blazor.Application</AssemblyName>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>default</LangVersion>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="AutoMapper" Version="14.0.0" />
+        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+        <PackageReference Include="Ardalis.Specification" Version="9.3.1" />
+        <PackageReference Include="Ardalis.Specification.EntityFrameworkCore" Version="9.3.1" />
+        <PackageReference Include="ClosedXML" Version="0.105.0" />
+    
+        <PackageReference Include="MailKit" Version="4.13.0" />
+        <PackageReference Include="MimeKit" Version="4.13.0" />
+        <PackageReference Include="Scriban" Version="6.2.1" />
+        
+        <PackageReference Include="FluentValidation" Version="12.0.0" />
+        <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.0.0" />
+        <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.8" />
+        <PackageReference Include="Microsoft.Extensions.Localization.Abstractions" Version="9.0.8" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+        <PackageReference Include="Hangfire.Core" Version="1.8.21" />
+        <PackageReference Include="ZiggyCreatures.FusionCache" Version="2.4.0" />
+     
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\Domain\Domain.csproj" />
+    </ItemGroup>
+</Project>
