@@ -33,7 +33,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Server.UI\Server.UI.csproj" />
+        <ProjectReference Include="..\..\src\Server.UI\IssueManager.UI.csproj" />
     </ItemGroup>
 
 </Project>

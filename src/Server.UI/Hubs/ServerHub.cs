@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity;
 using CleanArchitecture.Blazor.Domain.Identity;
+using CleanArchitecture.Blazor.Application.Features.Issues.DTOs;
+using CleanArchitecture.Blazor.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
 
 namespace CleanArchitecture.Blazor.Server.UI.Hubs;
@@ -139,5 +141,26 @@ public class ServerHub : Hub<ISignalRHub>
             ));
         }
         return result;
+    }
+
+    // Issue real-time update methods
+    public async Task BroadcastIssueCreated(IssueListDto issue)
+    {
+        await Clients.All.IssueCreated(issue).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastIssueUpdated(IssueListDto issue)
+    {
+        await Clients.All.IssueUpdated(issue).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastIssueStatusChanged(Guid issueId, IssueStatus newStatus)
+    {
+        await Clients.All.IssueStatusChanged(issueId, newStatus).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastIssueListUpdated()
+    {
+        await Clients.All.IssueListUpdated().ConfigureAwait(false);
     }
 }

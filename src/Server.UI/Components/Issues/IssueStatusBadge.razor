@@ -1,0 +1,37 @@
+﻿@using CleanArchitecture.Blazor.Domain.Enums
+
+<MudChip T="string" 
+         Size="Size.Small" 
+         Color="@GetStatusColor(Status)" 
+         Variant="Variant.Filled"
+         Class="rounded-pill">
+    @GetStatusDisplayText(Status)
+</MudChip>
+
+@code {
+    [Parameter] public IssueStatus Status { get; set; }
+
+    private Color GetStatusColor(IssueStatus status)
+    {
+        return status switch
+        {
+            IssueStatus.New => Color.Info,
+            IssueStatus.InProgress => Color.Warning,
+            IssueStatus.Resolved => Color.Success,
+            IssueStatus.Closed => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private string GetStatusDisplayText(IssueStatus status)
+    {
+        return status switch
+        {
+            IssueStatus.New => "New",
+            IssueStatus.InProgress => "In Progress",
+            IssueStatus.Resolved => "Resolved",
+            IssueStatus.Closed => "Closed",
+            _ => status.ToString()
+        };
+    }
+}

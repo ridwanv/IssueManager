@@ -89,6 +89,11 @@ public class UserPreference
     public DarkLightMode DarkLightTheme { get; set; }
 
     /// <summary>
+    /// Issues dashboard preferences
+    /// </summary>
+    public IssuesDashboardPreference IssuesDashboard { get; set; } = new();
+
+    /// <summary>
     /// Adjusts the brightness of a hex color.
     /// </summary>
     /// <param name="hexColor">The hex color code.</param>
@@ -278,4 +283,61 @@ public enum DarkLightMode
     System = 0,
     Light = 1,
     Dark = 2
+}
+
+/// <summary>
+/// Preferences specific to the Issues dashboard
+/// </summary>
+public class IssuesDashboardPreference
+{
+    /// <summary>
+    /// Default list view for Issues dashboard
+    /// </summary>
+    public string ListView { get; set; } = "All";
+
+    /// <summary>
+    /// Default sort column for Issues dashboard
+    /// </summary>
+    public string SortBy { get; set; } = "Created";
+
+    /// <summary>
+    /// Default sort direction for Issues dashboard
+    /// </summary>
+    public string SortDirection { get; set; } = "Descending";
+
+    /// <summary>
+    /// Default page size for Issues dashboard
+    /// </summary>
+    public int PageSize { get; set; } = 15;
+
+    /// <summary>
+    /// Saved filter preferences for Issues dashboard
+    /// </summary>
+    public IssuesFilterPreference Filters { get; set; } = new();
+}
+
+/// <summary>
+/// Filter preferences for the Issues dashboard
+/// </summary>
+public class IssuesFilterPreference
+{
+    /// <summary>
+    /// Default status filter
+    /// </summary>
+    public string? StatusFilter { get; set; }
+
+    /// <summary>
+    /// Default priority filter
+    /// </summary>
+    public string? PriorityFilter { get; set; }
+
+    /// <summary>
+    /// Default category filter
+    /// </summary>
+    public string? CategoryFilter { get; set; }
+
+    /// <summary>
+    /// Default assigned user filter
+    /// </summary>
+    public string? AssignedUserFilter { get; set; }
 }

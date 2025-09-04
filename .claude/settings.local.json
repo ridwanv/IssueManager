@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version)",
+      "Bash(md-tree:*)",
+      "Bash(npx md-tree:*)",
+      "Bash(npx @kayvan/markdown-tree-parser:*)",
+      "Bash(chmod:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(mkdir:*)",
+      "Bash(*help)",
+      "Bash(dotnet ef migrations add:*)",
+      "Bash(dotnet tool install:*)",
+      "Bash(where dotnet-ef)",
+      "Bash(dotnet tool list:*)",
+      "Bash(dotnet tool run dotnet-ef migrations add:*)",
+      "Bash(dotnet run:*)",
+      "Bash(powershell:*)",
+      "Bash(dotnet ef migrations:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\mnt\\c\\Development\\GitHub"
+    ]
+  }
+}

@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/Docs/">
+    <File Path=".github/workflows/copilot-instructions.md" />
+    <File Path="docs/prd.md" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".dockerignore" />
     <File Path=".editorconfig" />
@@ -9,9 +13,10 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Application/Application.csproj" />
+    <Project Path="src/Bot/IssueManager.Bot.csproj" />
     <Project Path="src/Domain/Domain.csproj" />
     <Project Path="src/Infrastructure/Infrastructure.csproj" />
-    <Project Path="src/Server.UI/Server.UI.csproj" />
+    <Project Path="src/Server.UI/IssueManager.UI.csproj" />
   </Folder>
   <Folder Name="/src/Migrators/">
     <Project Path="src/Migrators/Migrators.MSSQL/Migrators.MSSQL.csproj" />
@@ -23,7 +28,4 @@
     <Project Path="tests/Application.UnitTests/Application.UnitTests.csproj" />
     <Project Path="tests/Domain.UnitTests/Domain.UnitTests.csproj" />
   </Folder>
-  <Project Path="docker-compose.dcproj">
-    <Build />
-  </Project>
 </Solution>

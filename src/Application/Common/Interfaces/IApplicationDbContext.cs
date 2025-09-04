@@ -17,6 +17,9 @@ public interface IApplicationDbContext: IAsyncDisposable
     DbSet<Product> Products { get; set; }
     DbSet<Tenant> Tenants { get; set; }
     DbSet<Contact> Contacts { get; set; }
+    DbSet<Issue> Issues { get; set; }
+    DbSet<Attachment> Attachments { get; set; }
+    DbSet<EventLog> EventLogs { get; set; }
     DbSet<LoginAudit> LoginAudits { get; set; }
     DbSet<UserLoginRiskSummary> UserLoginRiskSummaries { get; set; }
     ChangeTracker ChangeTracker { get; }

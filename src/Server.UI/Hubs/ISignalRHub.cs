@@ -1,4 +1,6 @@
 ﻿using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity;
+using CleanArchitecture.Blazor.Application.Features.Issues.DTOs;
+using CleanArchitecture.Blazor.Domain.Enums;
 
 namespace CleanArchitecture.Blazor.Server.UI.Hubs;
 
@@ -23,4 +25,10 @@ public interface ISignalRHub
     // Snapshot method: fetch current online users with profile data
     // Note: invoked via HubConnection.InvokeAsync from clients
     Task<List<UserContext>> GetOnlineUsers();
+
+    // Issue real-time update methods
+    Task IssueCreated(IssueListDto issue);
+    Task IssueUpdated(IssueListDto issue);
+    Task IssueStatusChanged(Guid issueId, IssueStatus newStatus);
+    Task IssueListUpdated();
 }

@@ -5,8 +5,10 @@ using CleanArchitecture.Blazor.Application.Common.ExceptionHandlers;
 using CleanArchitecture.Blazor.Application.Common.PublishStrategies;
 using CleanArchitecture.Blazor.Application.Pipeline;
 using CleanArchitecture.Blazor.Application.Pipeline.PreProcessors;
+using CleanArchitecture.Blazor.Application.Features.Issues.Commands.Create;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Blazor.Application;
 
@@ -14,8 +16,18 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        services.AddLogging(loggingBuilder =>
+        {
+            loggingBuilder.ClearProviders();
+            loggingBuilder.AddConsole();
+            loggingBuilder.AddDebug();
+            loggingBuilder.AddEventSourceLogger();
+        });
         services.AddAutoMapper(Assembly.GetExecutingAssembly());
         services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
+        
+        // Register application services
+        services.AddScoped<IIssueReferenceNumberService, IssueReferenceNumberService>();
       
         services.AddMediatR(config =>
         {

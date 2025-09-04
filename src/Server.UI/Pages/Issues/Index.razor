@@ -1,0 +1,447 @@
+﻿@page "/issues"
+@page "/pages/issues"
+
+@using CleanArchitecture.Blazor.Application.Features.Issues.Caching
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Issues.Specifications
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetIssues
+@using CleanArchitecture.Blazor.Server.UI.Components.Issues
+@using CleanArchitecture.Blazor.Server.UI.Components.UtcToLocalTime
+@using CleanArchitecture.Blazor.Server.UI.Hubs
+@using CleanArchitecture.Blazor.Server.UI.Services.UserPreferences
+@using CleanArchitecture.Blazor.Domain.Enums
+@using Microsoft.AspNetCore.SignalR.Client
+
+@inject IStringLocalizer<Index> L
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IPermissionService PermissionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IUserPreferencesService UserPreferencesService
+@implements IAsyncDisposable
+
+@attribute [Authorize(Policy = Permissions.Issues.View)]
+<PageTitle>@Title</PageTitle>
+
+<MudDataGrid ServerData="@(ServerReload)"
+             FixedHeader="true"
+             FixedFooter="false"
+             Virtualize="false"
+             @bind-RowsPerPage="_defaultPageSize"
+             Loading="@_loading"
+             MultiSelection="true"
+             T="IssueListDto"
+             SelectOnRowClick="false"
+             RowClick="@(args => OnRowClick(args.Item))"
+             @bind-SelectedItems="_selectedItems"
+             Hover="true" @ref="_dataGrid">
+    
+    <ToolBarContent>
+        <MudStack Row Spacing="0" Class="flex-grow-1" Justify="Justify.SpaceBetween">
+            <MudStack Row AlignItems="AlignItems.Start">
+                <MudIcon Icon="@Icons.Material.Filled.BugReport" Size="Size.Large" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">@Title</MudText>
+                    <MudEnumSelect Style="min-width:120px" TEnum="IssueListView" ValueChanged="OnListViewChanged" Value="_query.ListView" Dense="true" Label="@L["List View"]">
+                    </MudEnumSelect>
+                </MudStack>
+            </MudStack>
+            
+            <MudStack Spacing="0" AlignItems="AlignItems.End">
+                <MudToolBar Dense WrapContent="true" Class="py-1 px-0">
+                    <MudButton Disabled="@_loading"
+                               OnClick="@(() => OnRefresh())"
+                               StartIcon="@Icons.Material.Outlined.Refresh">
+                        @ConstantString.Refresh
+                    </MudButton>
+                    
+                    @if (_accessRights.Create)
+                    {
+                        <MudButton StartIcon="@Icons.Material.Outlined.Add"
+                                   Size="Size.Small"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   OnClick="OnCreate">
+                            @ConstantString.New
+                        </MudButton>
+                    }
+                </MudToolBar>
+            </MudStack>
+        </MudStack>
+    </ToolBarContent>
+    
+    <Columns>
+        <SelectColumn T="IssueListDto" />
+        
+        <PropertyColumn Property="x => x.ReferenceNumber" Title="@L["Reference"]" Sortable="true">
+            <CellTemplate>
+                <MudLink Href="@($"/issues/{context.Item.Id}")">
+                    @context.Item.ReferenceNumber
+                </MudLink>
+            </CellTemplate>
+        </PropertyColumn>
+        
+        <PropertyColumn Property="x => x.Title" Title="@L["Title"]" Sortable="true">
+            <CellTemplate>
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body2">@context.Item.Title</MudText>
+                    @if (!string.IsNullOrEmpty(context.Item.Description))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @(context.Item.Description.Length > 50 ? context.Item.Description.Substring(0, 50) + "..." : context.Item.Description)
+                        </MudText>
+                    }
+                </MudStack>
+            </CellTemplate>
+        </PropertyColumn>
+        
+        <PropertyColumn Property="x => x.Status" Title="@L["Status"]" Sortable="true">
+            <CellTemplate>
+                <IssueStatusBadge Status="@context.Item.Status" />
+            </CellTemplate>
+        </PropertyColumn>
+        
+        <PropertyColumn Property="x => x.Priority" Title="@L["Priority"]" Sortable="true">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(context.Item.Priority)" Variant="Variant.Text">
+                    @context.Item.Priority.ToString()
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        
+        <PropertyColumn Property="x => x.Category" Title="@L["Category"]" Sortable="true" />
+        
+        <PropertyColumn Property="x => x.ReporterName" Title="@L["Reporter"]" Sortable="false">
+            <CellTemplate>
+                <MudStack Spacing="0">
+                    @if (!string.IsNullOrEmpty(context.Item.ReporterName))
+                    {
+                        <MudText Typo="Typo.body2">@context.Item.ReporterName</MudText>
+                    }
+                    @if (!string.IsNullOrEmpty(context.Item.ReporterPhone))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Item.ReporterPhone</MudText>
+                    }
+                </MudStack>
+            </CellTemplate>
+        </PropertyColumn>
+        
+        <PropertyColumn Property="x => x.Created" Format="yyyy-MM-dd HH:mm" Title="@L["Created"]" Sortable="true">
+            <CellTemplate>
+                @if (context.Item.Created.HasValue)
+                {
+                    <UtcToLocal DateTime="context.Item.Created.Value" Format="yyyy-MM-dd HH:mm" />
+                }
+            </CellTemplate>
+        </PropertyColumn>
+        
+        <TemplateColumn CellClass="d-flex justify-end" Sortable="false">
+            <CellTemplate>
+                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.Visibility" 
+                               OnClick="@(() => OnView(context.Item))" />
+                @if (_accessRights.Edit)
+                {
+                    <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.Edit" 
+                                   OnClick="@(() => OnEdit(context.Item))" />
+                }
+                @if (_accessRights.Delete)
+                {
+                    <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.Delete" 
+                                   OnClick="@(() => OnDelete(context.Item))" />
+                }
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    
+    <NoRecordsContent>
+        <MudText>@ConstantString.NoRecords</MudText>
+    </NoRecordsContent>
+    
+    <LoadingContent>
+        <MudText>@ConstantString.Loading</MudText>
+    </LoadingContent>
+    
+    <PagerContent>
+        <MudDataGridPager PageSizeOptions="@(new int[]{10,15,30,50,100,500,1000})" />
+    </PagerContent>
+</MudDataGrid>
+
+@code {
+    public string? Title { get; private set; }
+    private int _defaultPageSize = 15;
+    private HashSet<IssueListDto> _selectedItems = new();
+    private MudDataGrid<IssueListDto> _dataGrid = default!;
+    private bool _loading;
+    private HubConnection? _hubConnection;
+    
+    [CascadingParameter]
+    private UserProfile? UserProfile { get; set; }
+
+    private GetIssuesQuery _query { get; set; } = new();
+    private IssuesAccessRights _accessRights = new();
+    private UserPreference _userPreferences = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Title = L["Issues"];
+        _accessRights = await PermissionService.GetAccessRightsAsync<IssuesAccessRights>();
+        await LoadUserPreferences();
+        await InitializeSignalRConnection();
+    }
+
+    private async Task LoadUserPreferences()
+    {
+        try
+        {
+            _userPreferences = await UserPreferencesService.LoadUserPreferences();
+            
+            // Apply saved preferences to the query and UI
+            var issuesPrefs = _userPreferences.IssuesDashboard;
+            
+            // Set list view
+            if (Enum.TryParse<IssueListView>(issuesPrefs.ListView, out var listView))
+            {
+                _query.ListView = listView;
+            }
+            
+            // Set sorting preferences
+            _query.OrderBy = issuesPrefs.SortBy;
+            _query.SortDirection = issuesPrefs.SortDirection;
+            
+            // Set page size
+            _defaultPageSize = issuesPrefs.PageSize;
+            
+            // Apply filters
+            if (!string.IsNullOrEmpty(issuesPrefs.Filters.StatusFilter) && 
+                Enum.TryParse<IssueStatus>(issuesPrefs.Filters.StatusFilter, out var status))
+            {
+                _query.StatusFilter = status;
+            }
+            
+            if (!string.IsNullOrEmpty(issuesPrefs.Filters.PriorityFilter) && 
+                Enum.TryParse<IssuePriority>(issuesPrefs.Filters.PriorityFilter, out var priority))
+            {
+                _query.PriorityFilter = priority;
+            }
+            
+            if (!string.IsNullOrEmpty(issuesPrefs.Filters.CategoryFilter) && 
+                Enum.TryParse<IssueCategory>(issuesPrefs.Filters.CategoryFilter, out var category))
+            {
+                _query.CategoryFilter = category;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load preferences: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task SaveUserPreferences()
+    {
+        try
+        {
+            // Update preferences with current state
+            _userPreferences.IssuesDashboard.ListView = _query.ListView.ToString();
+            _userPreferences.IssuesDashboard.SortBy = _query.OrderBy;
+            _userPreferences.IssuesDashboard.SortDirection = _query.SortDirection;
+            _userPreferences.IssuesDashboard.PageSize = _defaultPageSize;
+            
+            // Save filter preferences
+            _userPreferences.IssuesDashboard.Filters.StatusFilter = _query.StatusFilter?.ToString();
+            _userPreferences.IssuesDashboard.Filters.PriorityFilter = _query.PriorityFilter?.ToString();
+            _userPreferences.IssuesDashboard.Filters.CategoryFilter = _query.CategoryFilter?.ToString();
+            
+            await UserPreferencesService.SaveUserPreferences(_userPreferences);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save preferences: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task InitializeSignalRConnection()
+    {
+        try
+        {
+            var hubUrl = Navigation.ToAbsoluteUri(ISignalRHub.Url);
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(hubUrl)
+                .WithAutomaticReconnect()
+                .Build();
+
+            // Register event handlers
+            _hubConnection.On<IssueListDto>("IssueCreated", OnIssueCreated);
+            _hubConnection.On<IssueListDto>("IssueUpdated", OnIssueUpdated);
+            _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnIssueStatusChanged);
+            _hubConnection.On("IssueListUpdated", OnIssueListUpdated);
+
+            // Handle connection state changes
+            _hubConnection.Reconnecting += (error) =>
+            {
+                InvokeAsync(() =>
+                {
+                    Snackbar.Add("Connection lost. Reconnecting...", Severity.Warning);
+                    return Task.CompletedTask;
+                });
+                return Task.CompletedTask;
+            };
+
+            _hubConnection.Reconnected += (connectionId) =>
+            {
+                InvokeAsync(() =>
+                {
+                    Snackbar.Add("Connection restored.", Severity.Success);
+                    return Task.CompletedTask;
+                });
+                return Task.CompletedTask;
+            };
+
+            await _hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"SignalR connection failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task<GridData<IssueListDto>> ServerReload(GridState<IssueListDto> state)
+    {
+        try
+        {
+            _loading = true;
+            _query.CurrentUser = UserProfile;
+            var sortDefinition = state.SortDefinitions.FirstOrDefault();
+            var newOrderBy = sortDefinition?.SortBy ?? "Created";
+            var newSortDirection = (sortDefinition != null && sortDefinition.Descending)
+                                 ? SortDirection.Descending.ToString()
+                                 : SortDirection.Ascending.ToString();
+            
+            // Check if sorting changed and save preferences
+            var sortingChanged = _query.OrderBy != newOrderBy || _query.SortDirection != newSortDirection;
+            var pageSizeChanged = _defaultPageSize != state.PageSize;
+            
+            _query.OrderBy = newOrderBy;
+            _query.SortDirection = newSortDirection;
+            _query.PageNumber = state.Page + 1;
+            _query.PageSize = state.PageSize;
+            
+            if (pageSizeChanged)
+            {
+                _defaultPageSize = state.PageSize;
+            }
+            
+            // Save preferences if sorting or page size changed (but not on first load)
+            if ((sortingChanged || pageSizeChanged) && _query.PageNumber > 1)
+            {
+                await SaveUserPreferences();
+            }
+            
+            var result = await Mediator.Send(_query).ConfigureAwait(false);
+            return new GridData<IssueListDto>() { TotalItems = result.TotalItems, Items = result.Items };
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnListViewChanged(IssueListView listView)
+    {
+        _query.ListView = listView;
+        await SaveUserPreferences();
+        await _dataGrid.ReloadServerData();
+    }
+
+    private async Task OnRefresh()
+    {
+        IssueCacheKey.Refresh();
+        await _dataGrid.ReloadServerData();
+    }
+
+    private void OnRowClick(IssueListDto item)
+    {
+        Navigation.NavigateTo($"/issues/{item.Id}");
+    }
+
+    private void OnView(IssueListDto item)
+    {
+        Navigation.NavigateTo($"/issues/{item.Id}");
+    }
+
+    private void OnEdit(IssueListDto item)
+    {
+        Navigation.NavigateTo($"/issues/{item.Id}/edit");
+    }
+
+    private void OnCreate()
+    {
+        Navigation.NavigateTo("/issues/create");
+    }
+
+    private async Task OnDelete(IssueListDto item)
+    {
+        var parameters = new DialogParameters
+        {
+            { nameof(DeleteConfirmation.ContentText), $"Are you sure you want to delete issue '{item.Title}'?" }
+        };
+
+        var dialog = await DialogService.ShowAsync<DeleteConfirmation>(L["Delete"], parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            // TODO: Implement delete functionality
+            Snackbar.Add("Delete functionality not yet implemented", Severity.Info);
+        }
+    }
+
+    private static Color GetPriorityColor(IssuePriority priority)
+    {
+        return priority switch
+        {
+            IssuePriority.Low => Color.Success,
+            IssuePriority.Medium => Color.Warning,
+            IssuePriority.High => Color.Error,
+            IssuePriority.Critical => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    // SignalR event handlers
+    private async Task OnIssueCreated(IssueListDto issue)
+    {
+        Snackbar.Add($"New issue created: {issue.ReferenceNumber}", Severity.Info);
+        await _dataGrid.ReloadServerData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnIssueUpdated(IssueListDto issue)
+    {
+        Snackbar.Add($"Issue updated: {issue.ReferenceNumber}", Severity.Info);
+        await _dataGrid.ReloadServerData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnIssueStatusChanged(Guid issueId, IssueStatus newStatus)
+    {
+        Snackbar.Add($"Issue status changed to {newStatus}", Severity.Info);
+        await _dataGrid.ReloadServerData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnIssueListUpdated()
+    {
+        await _dataGrid.ReloadServerData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}
