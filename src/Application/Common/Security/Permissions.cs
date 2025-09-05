@@ -54,4 +54,36 @@ public static partial class Permissions
         [Description("Allows viewing Hangfire dashboard")]
         public const string View = "Permissions.Hangfire.View";
     }
+
+    [DisplayName("Conversations Permissions")]
+    [Description("Set permissions for conversation escalation and agent management")]
+    public static class Conversations
+    {
+        [Description("View conversations")]
+        public const string View = "Permissions.Conversations.View";
+        
+        [Description("Escalate conversations to human agents")]
+        public const string Escalate = "Permissions.Conversations.Escalate";
+        
+        [Description("Assign agents to conversations")]
+        public const string Assign = "Permissions.Conversations.Assign";
+        
+        [Description("Complete conversations")]
+        public const string Complete = "Permissions.Conversations.Complete";
+        
+        [Description("Manage agents (create, update, delete)")]
+        public const string ManageAgents = "Permissions.Conversations.ManageAgents";
+        
+        [Description("View agent dashboard")]
+        public const string ViewAgentDashboard = "Permissions.Conversations.ViewAgentDashboard";
+        
+        [Description("Join conversations as agent")]
+        public const string JoinAsAgent = "Permissions.Conversations.JoinAsAgent";
+        
+        [Description("View conversation transcripts")]
+        public const string ViewTranscripts = "Permissions.Conversations.ViewTranscripts";
+        
+        [Description("Export conversation data")]
+        public const string Export = "Permissions.Conversations.Export";
+    }
 } 

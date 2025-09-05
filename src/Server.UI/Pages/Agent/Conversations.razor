@@ -1,0 +1,282 @@
+﻿@page "/agent/conversations"
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAllConversations
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Server.UI.Components.Shared
+@* @attribute [Authorize(Policy = Permissions.Conversations.View)] *@
+@inject IMediator Mediator
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@L["Agent Conversations"]</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="relative">
+    <div class="d-flex flex-column flex-grow-1 gap-4">
+        <div class="d-flex align-center justify-space-between">
+            <div class="d-flex align-center gap-4">
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Style="font-size:2rem;" />
+                <MudText Typo="Typo.h5">@L["Agent Conversations"]</MudText>
+            </div>
+            @* Temporarily disabled search/filter to fix blank page issue
+            <div class="d-flex align-center gap-2">
+                <MudTextField @bind-Value="searchString"
+                             Placeholder="@L["Search conversations..."]"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             IconSize="Size.Medium"
+                             Immediate="true"
+                             DebounceInterval="300"
+                             OnDebounceIntervalElapsed="OnSearch"
+                             Class="flex-grow-0"
+                             Style="min-width: 300px;" />
+                <MudSelect @bind-Value="selectedStatus"
+                          Label="@L["Status"]"
+                          Class="flex-grow-0"
+                          Style="min-width: 150px;"
+                          OnSelectionChanged="OnStatusChanged">
+                    <MudSelectItem Value="@((ConversationStatus?)null)">@L["All Statuses"]</MudSelectItem>
+                    <MudSelectItem Value="ConversationStatus.Active">@L["Active"]</MudSelectItem>
+                    <MudSelectItem Value="ConversationStatus.Completed">@L["Completed"]</MudSelectItem>
+                    <MudSelectItem Value="ConversationStatus.Abandoned">@L["Abandoned"]</MudSelectItem>
+                    <MudSelectItem Value="ConversationStatus.Archived">@L["Archived"]</MudSelectItem>
+                </MudSelect>
+            </div>
+            *@
+        </div>
+
+        @if (loading)
+        {
+            <div class="d-flex justify-center align-center" style="height: 200px;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else if (conversations?.Items?.Any() == true)
+        {
+            <MudTable Items="@conversations.Items" 
+                     Hover="true" 
+                     Striped="true" 
+                     Dense="true"
+                     FixedHeader="true"
+                     Height="600px"
+                     Class="mud-table-container">
+                <HeaderContent>
+                    <MudTh>@L["Conversation ID"]</MudTh>
+                    <MudTh>@L["User"]</MudTh>
+                    <MudTh>@L["Status"]</MudTh>
+                    <MudTh>@L["Created"]</MudTh>
+                    <MudTh>@L["Last Activity"]</MudTh>
+                    <MudTh>@L["Messages"]</MudTh>
+                    <MudTh>@L["Summary"]</MudTh>
+                    <MudTh>@L["Actions"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Conversation ID">
+                        <MudText Typo="Typo.body2" Class="font-weight-medium">
+                            @context.ConversationId
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="User">
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                            <MudText Typo="Typo.body2">
+                                @(context.UserName ?? context.UserId ?? L["Unknown"])
+                            </MudText>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" 
+                                Color="@GetStatusColor(context.Status)"
+                                Variant="Variant.Filled">
+                            @context.Status
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Created">
+                        <MudText Typo="Typo.body2">
+                            @context.Created.ToString("MMM dd, yyyy")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @context.Created.ToString("HH:mm")
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Last Activity">
+                        <MudText Typo="Typo.body2">
+                            @context.LastActivityAt.ToString("MMM dd, yyyy")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @context.LastActivityAt.ToString("HH:mm")
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Messages">
+                        <MudText Typo="Typo.body2" Class="text-center">
+                            @context.MessageCount
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Summary">
+                        @if (!string.IsNullOrEmpty(context.ConversationSummary))
+                        {
+                            <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 200px;">
+                                @context.ConversationSummary
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @L["No summary"]
+                            </MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <div class="d-flex gap-1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                          Size="Size.Small"
+                                          OnClick="@(() => ViewConversation(context.ConversationId))"
+                                          Title="@L["View conversation"]" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                          Size="Size.Small"
+                                          Title="@L["Export conversation"]" />
+                        </div>
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
+            </MudTable>
+
+            @if (conversations.TotalItems > conversations.Items.Count())
+            {
+                <div class="d-flex justify-center mt-4">
+                    <MudPagination Count="@conversations.TotalPages"
+                                  Selected="@currentPage"
+                                  SelectedChanged="OnPageChanged"
+                                  ShowFirstLast="true"
+                                  ShowPrevNext="true" />
+                </div>
+            }
+        }
+        else
+        {
+            <div class="d-flex flex-column align-center justify-center" style="height: 300px;">
+                <MudIcon Icon="@Icons.Material.Filled.ChatBubbleOutline" Style="font-size: 4rem; opacity: 0.3;" />
+                <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mt-4">
+                    @L["No conversations found"]
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @L["Conversations will appear here when users interact with the agent"]
+                </MudText>
+            </div>
+        }
+    </div>
+</MudContainer>
+
+<style>
+    .mud-table-container {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .mud-table-container .mud-table-head {
+        background-color: var(--mud-palette-surface-variant);
+    }
+    
+    .text-truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+@code {
+    private bool loading = true;
+    private string searchString = string.Empty;
+    private ConversationStatus? selectedStatus = null;
+    private int currentPage = 1;
+    private int pageSize = 12;
+    private PaginatedData<ConversationDto>? conversations;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConversations();
+    }
+
+    private async Task LoadConversations()
+    {
+        loading = true;
+        try
+        {
+            var query = new GetAllConversationsQuery(
+                Status: null, // Simplified - load all statuses
+                UserId: null,
+                SearchTerm: null, // Simplified - no search for now
+                StartDate: null,
+                EndDate: null,
+                Page: currentPage,
+                PageSize: pageSize,
+                SortBy: "LastActivityAt",
+                SortDescending: true
+            );
+
+            var result = await Mediator.Send(query);
+            if (result.Succeeded)
+            {
+                conversations = result.Data;
+            }
+            else
+            {
+                conversations = null;
+                // Show error to user
+                Snackbar.Add($"Error loading conversations: {string.Join(", ", result.Errors)}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            conversations = null;
+            Snackbar.Add($"Error loading conversations: {ex.Message}", Severity.Error);
+            Console.WriteLine($"Error loading conversations: {ex}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    // Temporarily disabled search/filter methods
+    /*
+    private async Task OnSearch()
+    {
+        currentPage = 1;
+        await LoadConversations();
+    }
+
+    private async Task OnStatusChanged()
+    {
+        currentPage = 1;
+        await LoadConversations();
+    }
+    */
+
+    private async Task OnPageChanged(int page)
+    {
+        currentPage = page;
+        await LoadConversations();
+    }
+
+    private void ViewConversation(string conversationId)
+    {
+        Navigation.NavigateTo($"/agent/conversations/{conversationId}");
+    }
+
+    private Color GetStatusColor(ConversationStatus status)
+    {
+        return status switch
+        {
+            ConversationStatus.Active => Color.Success,
+            ConversationStatus.Completed => Color.Secondary,
+            ConversationStatus.Abandoned => Color.Warning,
+            ConversationStatus.Archived => Color.Info,
+            _ => Color.Default
+        };
+    }
+}

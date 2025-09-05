@@ -36,6 +36,15 @@ namespace Microsoft.BotBuilderSamples
         public bool IsIssueIntakeActive { get; set; } = false;
         public DateTime IssueIntakeStartedAt { get; set; }
         
+        // Escalation state tracking
+        public bool IsEscalated { get; set; } = false;
+        public DateTime? EscalatedAt { get; set; }
+        public string? EscalationReason { get; set; }
+        public string? AssignedAgentId { get; set; }
+        public bool IsHandoffPending { get; set; } = false;
+        public DateTime? HandoffInitiatedAt { get; set; }
+        public int? ConversationEntityId { get; set; } // Link to Conversation domain entity
+        
         // Track conversation history
         public List<ConversationTurn> History = new List<ConversationTurn>();
 
@@ -98,6 +107,42 @@ namespace Microsoft.BotBuilderSamples
         {
             if (!IsIssueIntakeActive) return TimeSpan.Zero;
             return DateTime.UtcNow.Subtract(IssueIntakeStartedAt);
+        }
+        
+        public void InitiateEscalation(string reason)
+        {
+            IsEscalated = true;
+            IsHandoffPending = true;
+            EscalatedAt = DateTime.UtcNow;
+            EscalationReason = reason;
+            HandoffInitiatedAt = DateTime.UtcNow;
+            LastActivity = DateTime.UtcNow;
+        }
+        
+        public void CompleteHandoffToAgent(string agentId)
+        {
+            AssignedAgentId = agentId;
+            IsHandoffPending = false;
+            LastActivity = DateTime.UtcNow;
+        }
+        
+        public void HandbackToBot()
+        {
+            IsEscalated = false;
+            AssignedAgentId = null;
+            IsHandoffPending = false;
+            LastActivity = DateTime.UtcNow;
+        }
+        
+        public TimeSpan? GetEscalationDuration()
+        {
+            if (!IsEscalated || !EscalatedAt.HasValue) return null;
+            return DateTime.UtcNow.Subtract(EscalatedAt.Value);
+        }
+        
+        public string GetConversationTranscript()
+        {
+            return System.Text.Json.JsonSerializer.Serialize(History);
         }
         
         public string GetTimeoutWarningMessage()

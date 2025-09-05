@@ -31,4 +31,11 @@ public interface ISignalRHub
     Task IssueUpdated(IssueListDto issue);
     Task IssueStatusChanged(Guid issueId, IssueStatus newStatus);
     Task IssueListUpdated();
+    
+    // Agent escalation methods
+    Task ConversationEscalated(int conversationId, string reason, string customerPhoneNumber);
+    Task ConversationAssigned(int conversationId, string agentId, string agentName);
+    Task ConversationCompleted(int conversationId, string agentId);
+    Task AgentStatusChanged(string agentId, string status);
+    Task NewConversationMessage(int conversationId, string from, string message, bool isFromAgent);
 }

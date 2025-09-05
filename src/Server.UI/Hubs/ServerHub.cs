@@ -19,6 +19,7 @@ public class ServerHub : Hub<ISignalRHub>
     private sealed record ConnectionUser(string UserId, string UserName);
     private static readonly ConcurrentDictionary<string, ConnectionUser> OnlineUsers = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> ComponentUsers = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, HashSet<string>> AgentGroups = new(StringComparer.Ordinal); // userId -> group names
     private readonly IServiceScopeFactory _scopeFactory;
     public ServerHub(IServiceScopeFactory scopeFactory)
     {
@@ -162,5 +163,83 @@ public class ServerHub : Hub<ISignalRHub>
     public async Task BroadcastIssueListUpdated()
     {
         await Clients.All.IssueListUpdated().ConfigureAwait(false);
+    }
+
+    // Agent escalation methods
+    public async Task JoinAgentGroup()
+    {
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, "Agents");
+        
+        // Track agent group membership
+        AgentGroups.AddOrUpdate(userId, 
+            new HashSet<string> { "Agents" },
+            (key, existing) => { existing.Add("Agents"); return existing; });
+    }
+
+    public async Task LeaveAgentGroup()
+    {
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, "Agents");
+        
+        // Update agent group membership
+        if (AgentGroups.TryGetValue(userId, out var groups))
+        {
+            groups.Remove("Agents");
+        }
+    }
+
+    public async Task BroadcastConversationEscalated(int conversationId, string reason, string customerPhoneNumber)
+    {
+        await Clients.Group("Agents").ConversationEscalated(conversationId, reason, customerPhoneNumber).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastConversationAssigned(int conversationId, string agentId, string agentName)
+    {
+        await Clients.All.ConversationAssigned(conversationId, agentId, agentName).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastConversationCompleted(int conversationId, string agentId)
+    {
+        await Clients.All.ConversationCompleted(conversationId, agentId).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastAgentStatusChanged(string agentId, string status)
+    {
+        await Clients.Group("Agents").AgentStatusChanged(agentId, status).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastNewConversationMessage(int conversationId, string from, string message, bool isFromAgent)
+    {
+        await Clients.All.NewConversationMessage(conversationId, from, message, isFromAgent).ConfigureAwait(false);
+    }
+
+    // Agent-specific methods for conversation management
+    public async Task AcceptConversation(int conversationId)
+    {
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userName = Context.User?.Identity?.Name ?? "Agent";
+        
+        if (string.IsNullOrEmpty(userId)) return;
+
+        await BroadcastConversationAssigned(conversationId, userId, userName);
+    }
+
+    public async Task SendConversationMessage(int conversationId, string message)
+    {
+        var userName = Context.User?.Identity?.Name ?? "Agent";
+        await BroadcastNewConversationMessage(conversationId, userName, message, true);
+    }
+
+    public async Task CompleteConversation(int conversationId)
+    {
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        await BroadcastConversationCompleted(conversationId, userId);
     }
 }

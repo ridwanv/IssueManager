@@ -1,0 +1,222 @@
+@using CleanArchitecture.Blazor.Application.Features.Agents.Commands.ConvertUser
+@using CleanArchitecture.Blazor.Application.Features.Agents.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Identity.DTOs
+@using CleanArchitecture.Blazor.Infrastructure.Services.Identity
+@using CleanArchitecture.Blazor.Domain.Identity
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using CleanArchitecture.Blazor.Application.Common.Interfaces
+@using CleanArchitecture.Blazor.Application.Common.Constants
+@using MediatR
+@using MudBlazor
+@inject IStringLocalizer<ConvertUserToAgentDialog> L
+@inject UserManager<ApplicationUser> UserManager
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inherits MudComponentBase
+
+<MudDialog @bind-IsVisible="IsVisible" Options="@_dialogOptions">
+    <TitleContent>
+        <MudStack Row Spacing="2" AlignItems="AlignItems.Center">
+            <MudIcon Icon="@Icons.Material.Filled.PersonAdd" />
+            <MudText Typo="Typo.h6">@L["Convert User to Agent"]</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" Model="_model" Validation="@_validator.ValidateValue">
+            <MudStack Spacing="3">
+                <!-- User Selection -->
+                <MudAutocomplete T="ApplicationUserDto"
+                                @bind-Value="_selectedUser"
+                                SearchFunc="@SearchUsers"
+                                ToStringFunc="@(user => user?.UserName ?? "")"
+                                Label="@L["Select User"]"
+                                Variant="Variant.Outlined"
+                                Required="true"
+                                RequiredError="@L["Please select a user"]"
+                                AdornmentIcon="@Icons.Material.Filled.Person"
+                                AdornmentColor="Color.Primary">
+                    <ItemTemplate Context="user">
+                        <MudStack Row Spacing="2" AlignItems="AlignItems.Center">
+                            @if (!string.IsNullOrEmpty(user.ProfilePictureDataUrl))
+                            {
+                                <MudAvatar Size="Size.Small">
+                                    <MudImage Src="@user.ProfilePictureDataUrl" />
+                                </MudAvatar>
+                            }
+                            else
+                            {
+                                <MudAvatar Size="Size.Small" Color="Color.Primary">
+                                    @user.UserName?.ToUpper().FirstOrDefault()
+                                </MudAvatar>
+                            }
+                            <MudStack Spacing="0">
+                                <MudText>@user.UserName</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@user.Email</MudText>
+                            </MudStack>
+                        </MudStack>
+                    </ItemTemplate>
+                </MudAutocomplete>
+
+                @if (_selectedUser != null)
+                {
+                    <MudAlert Severity="Severity.Info" Class="my-2">
+                        @L["Converting"] <strong>@_selectedUser.UserName</strong> @L["to an agent will allow them to handle customer conversations and support requests."]
+                    </MudAlert>
+                }
+
+                <!-- Agent Configuration -->
+                <MudStack Row Spacing="2">
+                    <MudNumericField @bind-Value="_model.MaxConcurrentConversations"
+                                    Label="@L["Max Concurrent Conversations"]"
+                                    Variant="Variant.Outlined"
+                                    Min="1"
+                                    Max="50"
+                                    For="@(() => _model.MaxConcurrentConversations)"
+                                    AdornmentIcon="@Icons.Material.Filled.Chat" />
+
+                    <MudNumericField @bind-Value="_model.Priority"
+                                    Label="@L["Priority (1-10)"]"
+                                    Variant="Variant.Outlined"
+                                    Min="1"
+                                    Max="10"
+                                    For="@(() => _model.Priority)"
+                                    AdornmentIcon="@Icons.Material.Filled.Star" />
+                </MudStack>
+
+                <MudTextField @bind-Value="_model.Skills"
+                             Label="@L["Skills (comma-separated)"]"
+                             Variant="Variant.Outlined"
+                             Placeholder="@L["Technical Support, Customer Service, Sales"]"
+                             For="@(() => _model.Skills)"
+                             AdornmentIcon="@Icons.Material.Filled.Build" />
+
+                <MudTextField @bind-Value="_model.Notes"
+                             Label="@L["Notes"]"
+                             Variant="Variant.Outlined"
+                             Lines="3"
+                             Placeholder="@L["Additional notes about this agent..."]"
+                             For="@(() => _model.Notes)"
+                             AdornmentIcon="@Icons.Material.Filled.Notes" />
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">
+            @ConstantString.Cancel
+        </MudButton>
+        <MudLoadingButton Loading="@_saving"
+                         Color="Color.Primary"
+                         Variant="Variant.Filled"
+                         OnClick="Submit"
+                         Disabled="@(_selectedUser == null)">
+            @L["Convert to Agent"]
+        </MudLoadingButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+    [Parameter] public EventCallback OnUserConverted { get; set; }
+
+    private MudForm _form = new();
+    private bool _saving;
+    private ApplicationUserDto? _selectedUser;
+    private ConvertUserToAgentDto _model = new();
+    private readonly ConvertUserToAgentDtoValidator _validator = new();
+    
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Medium,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    private async Task<IEnumerable<ApplicationUserDto>> SearchUsers(string? value, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return new List<ApplicationUserDto>();
+
+        try
+        {
+            // Get users that are not already agents
+            var users = await UserManager.Users
+                .Where(u => (u.UserName!.Contains(value) || u.Email!.Contains(value)) &&
+                           !u.Agents.Any()) // Exclude users who are already agents
+                .Select(u => new ApplicationUserDto
+                {
+                    Id = u.Id,
+                    UserName = u.UserName,
+                    Email = u.Email,
+                    ProfilePictureDataUrl = u.ProfilePictureDataUrl,
+                    DisplayName = u.DisplayName,
+                    TenantId = u.TenantId
+                })
+                .Take(10)
+                .ToListAsync(cancellationToken);
+
+            return users;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error searching users: {ex.Message}", Severity.Error);
+            return new List<ApplicationUserDto>();
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (_selectedUser == null) return;
+
+        try
+        {
+            _saving = true;
+            await _form.Validate();
+
+            if (!_form.IsValid) return;
+
+            var command = new ConvertUserToAgentCommand(
+                _selectedUser.Id!,
+                _model.MaxConcurrentConversations,
+                _model.Priority,
+                _model.Skills,
+                _model.Notes);
+
+            var result = await Mediator.Send(command);
+
+            if (result.Succeeded)
+            {
+                await OnUserConverted.InvokeAsync();
+                await ResetForm();
+            }
+            else
+            {
+                Snackbar.Add(result.ErrorMessage, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error converting user: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task Cancel()
+    {
+        await ResetForm();
+        IsVisible = false;
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task ResetForm()
+    {
+        _selectedUser = null;
+        _model = new ConvertUserToAgentDto();
+        _form.ResetValidation();
+        await Task.CompletedTask;
+    }
+}

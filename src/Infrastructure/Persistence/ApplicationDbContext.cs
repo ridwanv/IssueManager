@@ -35,6 +35,14 @@ public class ApplicationDbContext : IdentityDbContext<
     public DbSet<LoginAudit> LoginAudits { get; set; }
     public DbSet<UserLoginRiskSummary> UserLoginRiskSummaries { get; set; }
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
+    
+    // Conversation escalation entities
+    public DbSet<Conversation> Conversations { get; set; }
+    public DbSet<ConversationMessage> ConversationMessages { get; set; }
+    public DbSet<ConversationAttachment> ConversationAttachments { get; set; }
+    public DbSet<Agent> Agents { get; set; }
+    public DbSet<ConversationParticipant> ConversationParticipants { get; set; }
+    public DbSet<ConversationHandoff> ConversationHandoffs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

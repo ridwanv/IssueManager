@@ -5,6 +5,8 @@ using CleanArchitecture.Blazor.Application.Common.Constants.Roles;
 using CleanArchitecture.Blazor.Application.Common.Constants.User;
 using CleanArchitecture.Blazor.Application.Common.Security;
 using CleanArchitecture.Blazor.Domain.Identity;
+using CleanArchitecture.Blazor.Domain.Entities;
+using CleanArchitecture.Blazor.Domain.Enums;
 
 namespace CleanArchitecture.Blazor.Infrastructure.Persistence;
 
@@ -310,6 +312,47 @@ public class ApplicationDbContextInitializer
             };
 
             await _context.Products.AddRangeAsync(products);
+            await _context.SaveChangesAsync();
+        }
+
+        if (!await _context.Agents.AnyAsync())
+        {
+            _logger.LogInformation("Seeding agents...");
+            
+            // Get existing users to create agents for
+            var adminUser = await _userManager.FindByNameAsync(UserName.Administrator);
+            var demoUser = await _userManager.FindByNameAsync(UserName.Demo);
+            var tenant = await _context.Tenants.FirstAsync();
+            
+            var agents = new[]
+            {
+                new Agent
+                {
+                    ApplicationUserId = adminUser!.Id,
+                    Status = AgentStatus.Available,
+                    MaxConcurrentConversations = 10,
+                    ActiveConversationCount = 0,
+                    Skills = "General Support, Technical Issues, Escalations",
+                    Priority = 10,
+                    Notes = "Senior agent with full access",
+                    TenantId = tenant.Id,
+                    LastActiveAt = DateTime.UtcNow
+                },
+                new Agent
+                {
+                    ApplicationUserId = demoUser!.Id,
+                    Status = AgentStatus.Available,
+                    MaxConcurrentConversations = 5,
+                    ActiveConversationCount = 0,
+                    Skills = "Customer Support, Basic Inquiries",
+                    Priority = 5,
+                    Notes = "Demo agent for testing",
+                    TenantId = tenant.Id,
+                    LastActiveAt = DateTime.UtcNow
+                }
+            };
+
+            await _context.Agents.AddRangeAsync(agents);
             await _context.SaveChangesAsync();
         }
     }

@@ -2,7 +2,6 @@ using CleanArchitecture.Blazor.Application.Features.Issues.Commands.Update;
 using CleanArchitecture.Blazor.Application.Features.Issues.DTOs;
 using CleanArchitecture.Blazor.Application.Common.Models;
 using CleanArchitecture.Blazor.Domain.Enums;
-using CleanArchitecture.Blazor.Infrastructure.Services.JIRA;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
@@ -13,18 +12,15 @@ namespace IssueManager.Api.Controllers;
 public class JiraWebhookController : ControllerBase
 {
     private readonly ILogger<JiraWebhookController> _logger;
-    private readonly IJiraService _jiraService;
     private readonly HttpClient _httpClient;
     private readonly string _issuesApiBaseUrl;
 
     public JiraWebhookController(
         ILogger<JiraWebhookController> logger,
-        IJiraService jiraService,
         HttpClient httpClient,
         IConfiguration configuration)
     {
         _logger = logger;
-        _jiraService = jiraService;
         _httpClient = httpClient;
         _issuesApiBaseUrl = configuration.GetValue<string>("IssuesApi:BaseUrl") ?? "https://localhost:7001/api";
     }
@@ -310,14 +306,14 @@ public class JiraWebhookController : ControllerBase
 
         return jiraStatus.ToLowerInvariant() switch
         {
-            "to do" => IssueStatus.Open,
-            "open" => IssueStatus.Open,
-            "new" => IssueStatus.Open,
+            "to do" => IssueStatus.New,
+            "open" => IssueStatus.New,
+            "new" => IssueStatus.New,
             "in progress" => IssueStatus.InProgress,
             "done" => IssueStatus.Resolved,
             "closed" => IssueStatus.Closed,
             "resolved" => IssueStatus.Resolved,
-            _ => IssueStatus.Open // Default fallback
+            _ => IssueStatus.New // Default fallback
         };
     }
 

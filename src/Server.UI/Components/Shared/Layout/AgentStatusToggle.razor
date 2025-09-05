@@ -1,0 +1,141 @@
+@using CleanArchitecture.Blazor.Application.Features.Agents.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Agents.Queries.GetCurrent
+@using CleanArchitecture.Blazor.Application.Features.Agents.Commands.UpdateStatus
+@using CleanArchitecture.Blazor.Domain.Enums
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<AgentStatusToggle> L
+@implements IDisposable
+
+@if (_currentAgent != null)
+{
+    <MudMenu Icon="@GetStatusIcon(_currentAgent.Status)" 
+             Color="@GetStatusColor(_currentAgent.Status)"
+             Size="Size.Medium"
+             Dense="true"
+             Class="mx-1">
+        <ActivatorContent>
+            <MudTooltip Text="@L["Change Status"]">
+                <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@GetStatusIcon(_currentAgent.Status)" 
+                             Color="@GetStatusColor(_currentAgent.Status)" 
+                             Size="Size.Small" />
+                    <MudHidden Breakpoint="Breakpoint.SmAndDown">
+                        <MudText Typo="Typo.caption">@_currentAgent.Status.ToString()</MudText>
+                    </MudHidden>
+                </MudStack>
+            </MudTooltip>
+        </ActivatorContent>
+        <ChildContent>
+            @foreach (AgentStatus status in Enum.GetValues<AgentStatus>())
+            {
+                @if (status != _currentAgent.Status)
+                {
+                    <MudMenuItem OnClick="@(() => UpdateStatusAsync(status))" Disabled="_isUpdating">
+                        <MudStack Row Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@GetStatusIcon(status)" 
+                                     Color="@GetStatusColor(status)" 
+                                     Size="Size.Small" />
+                            <MudText>@L[$"Set {status}"]</MudText>
+                        </MudStack>
+                    </MudMenuItem>
+                }
+            }
+        </ChildContent>
+    </MudMenu>
+}
+
+@code {
+    private AgentDto? _currentAgent;
+    private bool _isUpdating;
+    private System.Threading.Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentAgentAsync();
+        
+        // Set up periodic refresh every 30 seconds
+        _refreshTimer = new System.Threading.Timer(async _ => 
+        {
+            await InvokeAsync(async () => await LoadCurrentAgentAsync());
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task LoadCurrentAgentAsync()
+    {
+        try
+        {
+            var result = await Mediator.Send(new GetCurrentAgentQuery());
+            if (result.Succeeded)
+            {
+                _currentAgent = result.Data;
+                StateHasChanged();
+            }
+        }
+        catch (Exception)
+        {
+            // Silently fail - user might not be an agent
+        }
+    }
+
+    private async Task UpdateStatusAsync(AgentStatus newStatus)
+    {
+        if (_currentAgent == null || _isUpdating) return;
+
+        _isUpdating = true;
+        try
+        {
+            var command = new UpdateAgentStatusCommand(_currentAgent.Id, newStatus);
+            var result = await Mediator.Send(command);
+
+            if (result.Succeeded)
+            {
+                _currentAgent.Status = newStatus;
+                Snackbar.Add(L[$"Status updated to {newStatus}"], Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(result.ErrorMessage, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating status: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isUpdating = false;
+        }
+    }
+
+    private Color GetStatusColor(AgentStatus status)
+    {
+        return status switch
+        {
+            AgentStatus.Available => Color.Success,
+            AgentStatus.Busy => Color.Warning,
+            AgentStatus.Break => Color.Info,
+            AgentStatus.Training => Color.Secondary,
+            AgentStatus.Offline => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private string GetStatusIcon(AgentStatus status)
+    {
+        return status switch
+        {
+            AgentStatus.Available => Icons.Material.Filled.CheckCircle,
+            AgentStatus.Busy => Icons.Material.Filled.Schedule,
+            AgentStatus.Break => Icons.Material.Filled.Coffee,
+            AgentStatus.Training => Icons.Material.Filled.School,
+            AgentStatus.Offline => Icons.Material.Filled.RadioButtonUnchecked,
+            _ => Icons.Material.Filled.HelpOutline
+        };
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

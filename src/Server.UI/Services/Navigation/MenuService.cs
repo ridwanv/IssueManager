@@ -91,6 +91,29 @@ public class MenuService : IMenuService
         },
         new MenuSectionModel
         {
+            Title = "AGENT",
+            SectionItems = new List<MenuSectionItemModel>
+            {
+                new()
+                {
+                    Title = "Agent",
+                    Icon = Icons.Material.Filled.SmartToy,
+                    PageStatus = PageStatus.Completed,
+                    IsParent = true,
+                    MenuItems = new List<MenuSectionSubItemModel>
+                    {
+                        new()
+                        {
+                            Title = "Conversations",
+                            Href = "/agent/conversations",
+                            PageStatus = PageStatus.Completed
+                        }
+                    }
+                }
+            }
+        },
+        new MenuSectionModel
+        {
             Title = "MANAGEMENT",
             Roles = new[] { RoleName.Admin },
             SectionItems = new List<MenuSectionItemModel>
@@ -118,6 +141,12 @@ public class MenuService : IMenuService
                         {
                             Title = "Roles",
                             Href = "/identity/roles",
+                            PageStatus = PageStatus.Completed
+                        },
+                        new()
+                        {
+                            Title = "Agents",
+                            Href = "/pages/agents",
                             PageStatus = PageStatus.Completed
                         },
                         new()

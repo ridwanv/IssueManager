@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿#nullable enable
+using System.ComponentModel;
 
 namespace IssueManager.Bot.Models;
 
@@ -86,24 +87,24 @@ public class Result<T>
     public List<string> ErrorMessages { get; set; } = new();
     public int ErrorCode { get; set; }
 
-    public static async Task<Result<T>> SuccessAsync(T data, string message = "")
+    public static Task<Result<T>> SuccessAsync(T data, string message = "")
     {
-        return new Result<T>
+        return Task.FromResult(new Result<T>
         {
             Succeeded = true,
             Data = data,
             ErrorMessage = message
-        };
+        });
     }
 
-    public static async Task<Result<T>> FailureAsync(string errorMessage, int errorCode = 400)
+    public static Task<Result<T>> FailureAsync(string errorMessage, int errorCode = 400)
     {
-        return new Result<T>
+        return Task.FromResult(new Result<T>
         {
             Succeeded = false,
             ErrorMessage = errorMessage,
             ErrorCode = errorCode
-        };
+        });
     }
 }
 
@@ -181,10 +182,52 @@ public class PaginatedData<T>
     public bool HasNextPage { get; set; }
     public IEnumerable<T> Items { get; set; }
 
-    public static async Task<PaginatedData<T>> CreateAsync(IQueryable<T> source, int pageIndex, int pageSize)
+    public static Task<PaginatedData<T>> CreateAsync(IQueryable<T> source, int pageIndex, int pageSize)
     {
         var total = source.Count();
         var items = source.Skip((pageIndex - 1) * pageSize).Take(pageSize).ToList();
-        return new PaginatedData<T>(items, total, pageIndex, pageSize);
+        return Task.FromResult(new PaginatedData<T>(items, total, pageIndex, pageSize));
     }
+}
+
+/// <summary>
+/// Conversation message DTO for API responses
+/// </summary>
+public class ConversationMessageDto
+{
+    public int Id { get; set; }
+    public int ConversationId { get; set; }
+    public string BotFrameworkConversationId { get; set; } = default!;
+    public string Role { get; set; } = default!;
+    public string Content { get; set; } = default!;
+    public string? ToolCallId { get; set; }
+    public string? ToolCalls { get; set; }
+    public string? ImageType { get; set; }
+    public string? ImageData { get; set; }
+    public string? Attachments { get; set; }
+    public DateTime Timestamp { get; set; }
+    public string? UserId { get; set; }
+    public string? UserName { get; set; }
+    public string? ChannelId { get; set; }
+    public bool IsEscalated { get; set; }
+    public string TenantId { get; set; } = default!;
+}
+
+/// <summary>
+/// Create conversation message DTO for API requests
+/// </summary>
+public class ConversationMessageCreateDto
+{
+    public string BotFrameworkConversationId { get; set; } = default!;
+    public string Role { get; set; } = default!;
+    public string Content { get; set; } = default!;
+    public string? ToolCallId { get; set; }
+    public string? ToolCalls { get; set; }
+    public string? ImageType { get; set; }
+    public string? ImageData { get; set; }
+    public string? Attachments { get; set; }
+    public string? UserId { get; set; }
+    public string? UserName { get; set; }
+    public string? ChannelId { get; set; }
+    public DateTime? Timestamp { get; set; }
 }

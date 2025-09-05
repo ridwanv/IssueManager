@@ -1,0 +1,345 @@
+@page "/agent-dashboard"
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetEscalatedConversations
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAvailableAgents
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation
+@using CleanArchitecture.Blazor.Application.Common.Security
+
+@attribute [Authorize(Policy = Permissions.Conversations.ViewAgentDashboard)]
+
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Agent Dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-6">
+    <div class="d-flex justify-space-between align-center mb-6">
+        <div>
+            <MudText Typo="Typo.h4" Class="mb-2">Agent Dashboard</MudText>
+            <MudText Typo="Typo.body1" Class="mud-text-secondary">Real-time conversation escalation management</MudText>
+        </div>
+        <div class="d-flex align-center gap-4">
+            <MudChip T="string" Icon="Icons.Material.Filled.AccessTime" Color="Color.Info" Size="Size.Small">
+                Last Updated: @_lastUpdate.ToString("HH:mm:ss")
+            </MudChip>
+            <MudButton Variant="Variant.Outlined" 
+                      StartIcon="Icons.Material.Filled.Refresh" 
+                      OnClick="RefreshData" 
+                      Size="Size.Small">
+                Refresh
+            </MudButton>
+        </div>
+    </div>
+
+    <MudGrid>
+        <!-- Agent Status Panel -->
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Style="height: 600px; overflow-y: auto;">
+                <div class="d-flex align-center mb-4">
+                    <MudIcon Icon="Icons.Material.Filled.Support" Class="mr-2"/>
+                    <MudText Typo="Typo.h6">Available Agents (@_availableAgents.Count)</MudText>
+                </div>
+                
+                @if (_loading)
+                {
+                    <MudProgressCircular Indeterminate="true" Class="ma-4"/>
+                }
+                else
+                {
+                    @foreach (var agent in _availableAgents.OrderByDescending(a => a.IsAvailable))
+                    {
+                        <MudCard Class="@($"mb-2 {(agent.IsAvailable ? "border-success" : "border-warning")}")">
+                            <MudCardContent Class="pa-3">
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <MudText Typo="Typo.subtitle2" Class="mb-1">
+                                            @(agent.DisplayName ?? agent.UserName)
+                                        </MudText>
+                                        <div class="d-flex align-center gap-2">
+                                            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(agent.Status)">
+                                                @agent.StatusText
+                                            </MudChip>
+                                            <MudText Typo="Typo.caption">
+                                                @agent.ActiveConversationCount/@agent.MaxConcurrentConversations
+                                            </MudText>
+                                        </div>
+                                    </div>
+                                    <MudProgressCircular Value="@agent.WorkloadPercentage" 
+                                                       Color="@GetWorkloadColor(agent.WorkloadPercentage)"
+                                                       Size="Size.Small"/>
+                                </div>
+                            </MudCardContent>
+                        </MudCard>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Escalated Conversations -->
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Style="height: 600px;">
+                <div class="d-flex align-center justify-space-between mb-4">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="Icons.Material.Filled.PriorityHigh" Class="mr-2 mud-error-text"/>
+                        <MudText Typo="Typo.h6">Escalated Conversations (@_escalatedConversations.Count)</MudText>
+                    </div>
+                    <MudSwitch T="bool" @bind-Checked="_autoAssign" 
+                              Label="Auto-assign" 
+                              Color="Color.Primary"
+                              Size="Size.Small"/>
+                </div>
+
+                @if (_loading)
+                {
+                    <div class="d-flex justify-center pa-8">
+                        <MudProgressCircular Indeterminate="true" Size="Size.Large"/>
+                    </div>
+                }
+                else if (!_escalatedConversations.Any())
+                {
+                    <div class="d-flex flex-column align-center justify-center pa-8">
+                        <MudIcon Icon="Icons.Material.Outlined.CheckCircle" 
+                                Style="font-size: 64px;" 
+                                Class="mb-4 mud-success-text"/>
+                        <MudText Typo="Typo.h6" Class="mb-2">All Clear!</MudText>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            No escalated conversations at the moment.
+                        </MudText>
+                    </div>
+                }
+                else
+                {
+                    <div style="height: 500px; overflow-y: auto;">
+                        @foreach (var conversation in _escalatedConversations.OrderBy(c => c.EscalatedAt))
+                        {
+                            <MudCard Class="mb-3">
+                                <MudCardContent>
+                                    <div class="d-flex justify-space-between align-start mb-2">
+                                        <div class="flex-grow-1">
+                                            <MudText Typo="Typo.subtitle1" Class="mb-1">
+                                                📱 @(conversation.WhatsAppPhoneNumber ?? "Unknown Number")
+                                            </MudText>
+                                            <MudText Typo="Typo.body2" Class="mb-2 mud-text-secondary">
+                                                @conversation.EscalationReason
+                                            </MudText>
+                                            <div class="d-flex align-center gap-4 mb-2">
+                                                <MudChip T="string" Size="Size.Small" 
+                                                        Color="@GetModeColor(conversation.Mode)">
+                                                    @conversation.ModeText
+                                                </MudChip>
+                                                <MudText Typo="Typo.caption">
+                                                    Escalated: @conversation.EscalatedAt?.ToString("HH:mm")
+                                                </MudText>
+                                                <MudText Typo="Typo.caption">
+                                                    Duration: @FormatDuration(conversation.Duration)
+                                                </MudText>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(conversation.CurrentAgentName))
+                                            {
+                                                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                                                    Assigned to: @conversation.CurrentAgentName
+                                                </MudAlert>
+                                            }
+                                        </div>
+                                        <div class="d-flex flex-column gap-1">
+                                            @if (string.IsNullOrEmpty(conversation.CurrentAgentId))
+                                            {
+                                                <MudButton Variant="Variant.Filled" 
+                                                          Color="Color.Primary" 
+                                                          Size="Size.Small"
+                                                          StartIcon="Icons.Material.Filled.Assignment"
+                                                          OnClick="() => AcceptConversation(conversation)"
+                                                          Disabled="_processing">
+                                                    Accept
+                                                </MudButton>
+                                            }
+                                            else
+                                            {
+                                                <MudButton Variant="Variant.Outlined" 
+                                                          Color="Color.Success" 
+                                                          Size="Size.Small"
+                                                          StartIcon="Icons.Material.Filled.CheckCircle"
+                                                          OnClick="() => CompleteConversation(conversation)"
+                                                          Disabled="_processing">
+                                                    Complete
+                                                </MudButton>
+                                            }
+                                            <MudButton Variant="Variant.Text" 
+                                                      Color="Color.Primary" 
+                                                      Size="Size.Small"
+                                                      StartIcon="Icons.Material.Filled.Chat"
+                                                      OnClick="() => OpenConversation(conversation)">
+                                                View
+                                            </MudButton>
+                                        </div>
+                                    </div>
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </div>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private List<ConversationDto> _escalatedConversations = new();
+    private List<AgentDto> _availableAgents = new();
+    private bool _loading = true;
+    private bool _processing = false;
+    private bool _autoAssign = false;
+    private DateTime _lastUpdate = DateTime.Now;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshData();
+        
+        // Set up auto-refresh every 30 seconds
+        _refreshTimer = new Timer(async _ => await InvokeAsync(RefreshData), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task RefreshData()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var escalatedTask = Mediator.Send(new GetEscalatedConversationsQuery());
+            var agentsTask = Mediator.Send(new GetAvailableAgentsQuery());
+
+            await Task.WhenAll(escalatedTask, agentsTask);
+
+            var escalatedResult = await escalatedTask;
+            var agentsResult = await agentsTask;
+
+            if (escalatedResult.Succeeded)
+                _escalatedConversations = escalatedResult.Data;
+            
+            if (agentsResult.Succeeded)
+                _availableAgents = agentsResult.Data;
+
+            _lastUpdate = DateTime.Now;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error refreshing data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task AcceptConversation(ConversationDto conversation)
+    {
+        _processing = true;
+        try
+        {
+            var result = await Mediator.Send(new AssignAgentCommand(conversation.Id, "current-user-id")); // TODO: Get current user ID
+            
+            if (result.Succeeded)
+            {
+                Snackbar.Add($"Conversation accepted successfully", Severity.Success);
+                await RefreshData();
+            }
+            else
+            {
+                Snackbar.Add($"Failed to accept conversation: {result.ErrorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error accepting conversation: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task CompleteConversation(ConversationDto conversation)
+    {
+        _processing = true;
+        try
+        {
+            var result = await Mediator.Send(new CompleteConversationCommand(conversation.Id, "Conversation completed by agent"));
+            
+            if (result.Succeeded)
+            {
+                Snackbar.Add($"Conversation completed successfully", Severity.Success);
+                await RefreshData();
+            }
+            else
+            {
+                Snackbar.Add($"Failed to complete conversation: {result.ErrorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error completing conversation: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task OpenConversation(ConversationDto conversation)
+    {
+        // TODO: Implement conversation detail view
+        await JS.InvokeVoidAsync("open", $"/conversations/{conversation.Id}", "_blank");
+    }
+
+    private Color GetStatusColor(CleanArchitecture.Blazor.Domain.Enums.AgentStatus status)
+    {
+        return status switch
+        {
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Available => Color.Success,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Busy => Color.Warning,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Break => Color.Info,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Training => Color.Secondary,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Offline => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetModeColor(CleanArchitecture.Blazor.Domain.Enums.ConversationMode mode)
+    {
+        return mode switch
+        {
+            CleanArchitecture.Blazor.Domain.Enums.ConversationMode.Escalating => Color.Warning,
+            CleanArchitecture.Blazor.Domain.Enums.ConversationMode.Human => Color.Info,
+            CleanArchitecture.Blazor.Domain.Enums.ConversationMode.HandingBackToBot => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetWorkloadColor(double percentage)
+    {
+        return percentage switch
+        {
+            <= 50 => Color.Success,
+            <= 80 => Color.Warning,
+            _ => Color.Error
+        };
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        else
+            return $"{duration.Minutes}m {duration.Seconds}s";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

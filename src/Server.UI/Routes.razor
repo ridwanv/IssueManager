@@ -20,6 +20,39 @@
             </AuthorizeRouteView>
             <FocusOnNavigate RouteData="@routeData" Selector="h1"/>
         </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <div style="display: flex; justify-content: center; align-items: center; min-height: 60vh;">
+                    <MudPaper Class="pa-8" Elevation="1" Style="max-width: 600px; text-align: center;">
+                        <MudIcon Icon="@Icons.Material.Filled.Error" Style="font-size: 4rem; color: #f44336;" Class="mb-4" />
+                        <MudText Typo="Typo.h4" Color="Color.Error" Class="mb-4">Page Not Found</MudText>
+                        <MudText Typo="Typo.body1" Class="mb-4">
+                            The page you are looking for could not be found or there was an error loading it.
+                        </MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                            URL: @NavigationManager.Uri
+                        </MudText>
+                        <MudDivider Class="my-4" />
+                        <MudButton Variant="Variant.Filled" 
+                                  Color="Color.Primary" 
+                                  StartIcon="@Icons.Material.Filled.Home"
+                                  Href="/"
+                                  Class="mr-2">
+                            Go Home
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" 
+                                  Color="Color.Secondary" 
+                                  StartIcon="@Icons.Material.Filled.Refresh"
+                                  OnClick="@(() => NavigationManager.Refresh(true))">
+                            Refresh Page
+                        </MudButton>
+                    </MudPaper>
+                </div>
+            </LayoutView>
+        </NotFound>
     </Router>
 </CascadingAuthenticationState>
+
+@inject NavigationManager NavigationManager
 

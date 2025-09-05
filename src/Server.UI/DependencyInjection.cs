@@ -41,7 +41,8 @@ public static class DependencyInjection
         services.AddRazorComponents()
             .AddInteractiveServerComponents(options =>
             {
-                options.DetailedErrors = environment?.IsDevelopment() ?? false;
+                // Always show detailed errors in development, and optionally in other environments for debugging
+                options.DetailedErrors = environment?.IsDevelopment() ?? true; // Changed to true for debugging
                 options.DisconnectedCircuitMaxRetained = 100;
                 options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
                 options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(1);
@@ -150,7 +151,7 @@ public static class DependencyInjection
                 options.HandshakeTimeout = TimeSpan.FromSeconds(15);
                 options.KeepAliveInterval = TimeSpan.FromSeconds(15);
                 options.MaximumParallelInvocationsPerClient = 1;
-                options.EnableDetailedErrors = environment?.IsDevelopment() ?? false;
+                options.EnableDetailedErrors = environment?.IsDevelopment() ?? true; // Enable detailed errors for debugging
             });
         
       

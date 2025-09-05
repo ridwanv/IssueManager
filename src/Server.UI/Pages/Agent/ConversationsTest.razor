@@ -1,0 +1,21 @@
+@page "/agent/conversations-test"
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>Test Page</PageTitle>
+
+<h1>Simple Test Page</h1>
+<p>If you can see this, the routing and basic page loading works.</p>
+<p>Current time: @DateTime.Now</p>
+
+<MudContainer>
+    <MudCard>
+        <MudCardContent>
+            <MudText Typo="Typo.h5">Test Content</MudText>
+            <MudText>This is a test to verify MudBlazor components work.</MudText>
+        </MudCardContent>
+    </MudCard>
+</MudContainer>
+
+@code {
+    // Empty code block for testing
+}

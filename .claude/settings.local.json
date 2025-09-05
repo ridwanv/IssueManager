@@ -23,7 +23,10 @@
       "WebSearch",
       "Bash(curl:*)",
       "Bash(claude mcp add:*)",
-      "Bash(claude mcp)"
+      "Bash(claude mcp)",
+      "WebFetch(domain:learn.microsoft.com)",
+      "Bash(dotnet clean:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": [],

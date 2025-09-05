@@ -1,0 +1,126 @@
+@page "/diagnostic"
+@inject IJSRuntime JS
+@inject ILogger<Diagnostic> Logger
+
+<PageTitle>Diagnostic Page</PageTitle>
+
+<MudContainer>
+    <MudText Typo="Typo.h4" Class="mb-4">Blazor Diagnostic Page</MudText>
+    
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6" Class="mb-2">Connection Status</MudText>
+                    <MudText>Current Time: @DateTime.Now</MudText>
+                    <MudText>Page Loaded Successfully: ✅</MudText>
+                    <MudText>Blazor Circuit: @(isConnected ? "Connected ✅" : "Disconnected ❌")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        
+        <MudItem xs="12">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6" Class="mb-2">Test Actions</MudText>
+                    <MudStack Row Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TestJavaScript">
+                            Test JavaScript
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="TestException">
+                            Test Exception
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="TestConsoleLog">
+                            Test Console Log
+                        </MudButton>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        
+        <MudItem xs="12">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6" Class="mb-2">Messages</MudText>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        @foreach (var message in messages)
+                        {
+                            <MudText Typo="Typo.body2" Class="mb-1">@message</MudText>
+                        }
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private bool isConnected = false;
+    private List<string> messages = new();
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("console.log", "Diagnostic page loaded successfully");
+                isConnected = true;
+                AddMessage("Component initialized successfully");
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                AddMessage($"Error in OnAfterRender: {ex.Message}");
+                Logger.LogError(ex, "Error in diagnostic page");
+            }
+        }
+    }
+    
+    private async Task TestJavaScript()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("alert", "JavaScript is working!");
+            AddMessage("JavaScript test passed");
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"JavaScript test failed: {ex.Message}");
+        }
+    }
+    
+    private void TestException()
+    {
+        try
+        {
+            throw new Exception("This is a test exception");
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Test exception caught: {ex.Message}");
+            Logger.LogError(ex, "Test exception in diagnostic page");
+        }
+    }
+    
+    private async Task TestConsoleLog()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("console.log", "Test console log from Blazor");
+            await JS.InvokeVoidAsync("console.error", "Test console error from Blazor");
+            await JS.InvokeVoidAsync("console.warn", "Test console warning from Blazor");
+            AddMessage("Console log tests executed - check browser console");
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Console log test failed: {ex.Message}");
+        }
+    }
+    
+    private void AddMessage(string message)
+    {
+        messages.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        StateHasChanged();
+    }
+}

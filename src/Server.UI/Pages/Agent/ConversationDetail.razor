@@ -1,0 +1,567 @@
+@page "/agent/conversations/{ConversationId}"
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Common.Models
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationById
+@* @attribute [Authorize(Policy = Permissions.Conversations.View)] *@
+@inject IMediator Mediator
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@L["Conversation Details"] - @(conversationDetails?.Conversation.ConversationId ?? ConversationId)</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="relative">
+    @if (loading)
+    {
+        <div class="d-flex justify-center align-center" style="height: 400px;">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+        </div>
+    }
+    else if (conversationDetails == null)
+    {
+        <div class="d-flex flex-column align-center justify-center" style="height: 400px;">
+            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Style="font-size: 4rem; opacity: 0.3;" />
+            <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mt-4">
+                @L["Conversation not found"]
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                @L["The conversation with ID"] @ConversationId @L["could not be found. It may have been deleted or you may not have permission to view it."]
+            </MudText>
+            <div class="d-flex gap-2 mt-4">
+                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo("/agent/conversations"))">
+                    @L["Back to Conversations"]
+                </MudButton>
+                <MudButton Color="Color.Secondary" Variant="Variant.Text" OnClick="@LoadConversation">
+                    @L["Retry"]
+                </MudButton>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex flex-column gap-4">
+            <!-- Header -->
+            <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center gap-4">
+                    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" 
+                                  OnClick="@(() => Navigation.NavigateTo("/agent/conversations"))"
+                                  Size="Size.Medium"
+                                  Variant="Variant.Outlined" />
+                    <div>
+                        <MudText Typo="Typo.h5">@L["Conversation"] @conversationDetails.Conversation.ConversationId</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @L["Started"] @conversationDetails.Conversation.Created.ToString("MMM dd, yyyy HH:mm") • 
+                            @L["Last activity"] @conversationDetails.Conversation.LastActivityAt.ToString("MMM dd, yyyy HH:mm")
+                        </MudText>
+                    </div>
+                </div>
+                
+                <div class="d-flex align-center gap-2">
+                    <MudChip T="string" Size="Size.Medium" 
+                            Color="@GetStatusColor(conversationDetails.Conversation.Status)"
+                            Variant="Variant.Filled">
+                        @conversationDetails.Conversation.Status
+                    </MudChip>
+                    <MudChip T="string" Size="Size.Medium" Color="Color.Info" Variant="Variant.Outlined">
+                        @conversationDetails.Conversation.Mode
+                    </MudChip>
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" 
+                            AnchorOrigin="Origin.BottomRight" 
+                            TransformOrigin="Origin.TopRight">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Download">@L["Export"]</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Share">@L["Share"]</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Archive">@L["Archive"]</MudMenuItem>
+                    </MudMenu>
+                </div>
+            </div>
+
+            <MudGrid>
+                <!-- Left Column - Conversation Info -->
+                <MudItem xs="12" md="4">
+                    <MudCard>
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@L["Conversation Info"]</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <div class="d-flex flex-column gap-3">
+                                <!-- User Info -->
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["User"]</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        @(conversationDetails.Conversation.UserName ?? conversationDetails.Conversation.UserId ?? L["Unknown"])
+                                    </MudText>
+                                    @if (!string.IsNullOrEmpty(conversationDetails.Conversation.WhatsAppPhoneNumber))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @conversationDetails.Conversation.WhatsAppPhoneNumber
+                                        </MudText>
+                                    }
+                                </div>
+
+                                <!-- Agent Info -->
+                                @if (!string.IsNullOrEmpty(conversationDetails.Conversation.CurrentAgentName))
+                                {
+                                    <div>
+                                        <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Current Agent"]</MudText>
+                                        <MudText Typo="Typo.body2">
+                                            @conversationDetails.Conversation.CurrentAgentName
+                                        </MudText>
+                                    </div>
+                                }
+
+                                <!-- Duration -->
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Duration"]</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        @conversationDetails.Conversation.DurationText
+                                    </MudText>
+                                </div>
+
+                                <!-- Message Count -->
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Messages"]</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        @conversationDetails.Conversation.MessageCount
+                                    </MudText>
+                                </div>
+
+                                <!-- Last Activity -->
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Last Activity"]</MudText>
+                                    <MudText Typo="Typo.body2">
+                                        @conversationDetails.Conversation.LastActivityAt.ToString("MMM dd, yyyy HH:mm")
+                                    </MudText>
+                                </div>
+
+                                <!-- Summary -->
+                                @if (!string.IsNullOrEmpty(conversationDetails.Conversation.ConversationSummary))
+                                {
+                                    <div>
+                                        <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Summary"]</MudText>
+                                        <MudText Typo="Typo.body2">
+                                            @conversationDetails.Conversation.ConversationSummary
+                                        </MudText>
+                                    </div>
+                                }
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+
+                    <!-- Participants -->
+                    @if (conversationDetails.Participants?.Any() == true)
+                    {
+                        <MudCard Class="mt-4">
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">@L["Participants"]</MudText>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                @foreach (var participant in conversationDetails.Participants)
+                                {
+                                    <div class="d-flex align-center justify-space-between mb-2">
+                                        <div>
+                                            <MudText Typo="Typo.body2">
+                                                @participant.ParticipantName
+                                            </MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @participant.Type
+                                            </MudText>
+                                        </div>
+                                        <MudChip T="string" Size="Size.Small" 
+                                                Color="@(participant.IsActive ? Color.Success : Color.Secondary)">
+                                            @(participant.IsActive ? L["Active"] : L["Left"])
+                                        </MudChip>
+                                    </div>
+                                }
+                            </MudCardContent>
+                        </MudCard>
+                    }
+                </MudItem>
+
+                <!-- Right Column - Messages -->
+                <MudItem xs="12" md="8">
+                    <MudCard Style="height: 700px; display: flex; flex-direction: column;">
+                        <MudCardHeader Class="pb-2">
+                            <CardHeaderContent>
+                                <div class="d-flex align-center justify-space-between">
+                                    <MudText Typo="Typo.h6">@L["Conversation Messages"]</MudText>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">
+                                        @(conversationDetails.Messages?.Count ?? 0) @L["messages"]
+                                    </MudChip>
+                                </div>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Style="flex: 1; overflow-y: auto; padding: 16px;" Class="message-container">
+                            @if (conversationDetails.Messages?.Any() == true)
+                            {
+                                <div class="d-flex flex-column gap-4" id="messages-container">
+                                    @foreach (var message in conversationDetails.Messages.OrderBy(m => m.Timestamp))
+                                    {
+                                        <div class="@GetMessageContainerClass(message.Role)">
+                                            <div class="@GetMessageBubbleClass(message.Role)" 
+                                                style="@GetMessageBubbleStyle(message.Role)">
+                                                <div class="message-header">
+                                                    <div class="d-flex align-center gap-2">
+                                                        <MudAvatar Size="Size.Small" 
+                                                                  Color="@GetMessageAvatarColor(message.Role)">
+                                                            @GetMessageAvatarIcon(message.Role)
+                                                        </MudAvatar>
+                                                        <MudText Typo="Typo.caption" Class="font-weight-medium">
+                                                            @(message.UserName ?? GetRoleDisplayName(message.Role))
+                                                        </MudText>
+                                                    </div>
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                        @message.Timestamp.ToString("HH:mm")
+                                                    </MudText>
+                                                </div>
+                                                <div class="message-content">
+                                                    <MudText Typo="Typo.body2" Class="message-text">
+                                                        @message.Content
+                                                    </MudText>
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(message.Role) && message.Role != "user")
+                                                {
+                                                    <div class="message-footer">
+                                                        <MudChip T="string" Size="Size.Small" 
+                                                                Color="@GetRoleChipColor(message.Role)"
+                                                                Variant="Variant.Text">
+                                                            @message.Role
+                                                        </MudChip>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex flex-column align-center justify-center" style="height: 100%;">
+                                    <MudIcon Icon="@Icons.Material.Filled.ChatBubbleOutline" Style="font-size: 3rem; opacity: 0.3;" />
+                                    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mt-2">
+                                        @L["No messages in this conversation"]
+                                    </MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                                        @L["Messages will appear here when the conversation starts"]
+                                    </MudText>
+                                </div>
+                            }
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Handoff History -->
+            @if (conversationDetails.HandoffHistory?.Any() == true)
+            {
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@L["Handoff History"]</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                            @foreach (var handoff in conversationDetails.HandoffHistory.OrderByDescending(h => h.InitiatedAt))
+                            {
+                                <MudTimelineItem Color="@GetHandoffColor(handoff.Status)" Variant="Variant.Filled" Size="Size.Small">
+                                    <ItemOpposite>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @handoff.InitiatedAt.ToString("MMM dd, yyyy HH:mm")
+                                        </MudText>
+                                    </ItemOpposite>
+                                    <ItemContent>
+                                        <MudCard Elevation="1">
+                                            <MudCardContent Class="py-2">
+                                                <div class="d-flex align-center justify-space-between mb-1">
+                                                    <MudText Typo="Typo.subtitle2">
+                                                        @handoff.HandoffType handoff
+                                                    </MudText>
+                                                    <MudChip T="string" Size="Size.Small" Color="@GetHandoffColor(handoff.Status)">
+                                                        @handoff.Status
+                                                    </MudChip>
+                                                </div>
+                                                <MudText Typo="Typo.body2" Class="mb-1">
+                                                    @L["From"]: @handoff.FromParticipantType → @L["To"]: @handoff.ToParticipantType
+                                                </MudText>
+                                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                    @handoff.Reason
+                                                </MudText>
+                                                @if (!string.IsNullOrEmpty(handoff.Notes))
+                                                {
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                                        @L["Notes"]: @handoff.Notes
+                                                    </MudText>
+                                                }
+                                            </MudCardContent>
+                                        </MudCard>
+                                    </ItemContent>
+                                </MudTimelineItem>
+                            }
+                        </MudTimeline>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </div>
+    }
+</MudContainer>
+
+<style>
+    .message-container {
+        scroll-behavior: smooth;
+    }
+    
+    .message-container::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .message-container::-webkit-scrollbar-track {
+        background: var(--mud-palette-surface-variant);
+        border-radius: 3px;
+    }
+    
+    .message-container::-webkit-scrollbar-thumb {
+        background: var(--mud-palette-text-secondary);
+        border-radius: 3px;
+    }
+    
+    .message-container::-webkit-scrollbar-thumb:hover {
+        background: var(--mud-palette-text-primary);
+    }
+    
+    .message-bubble {
+        border-radius: 18px;
+        padding: 12px 16px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease-in-out;
+    }
+    
+    .message-bubble:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    .user-message {
+        border-bottom-right-radius: 4px;
+    }
+    
+    .assistant-message {
+        border-bottom-left-radius: 4px;
+    }
+    
+    .message-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    
+    .message-content {
+        margin-bottom: 4px;
+    }
+    
+    .message-text {
+        line-height: 1.5;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+    }
+    
+    .message-footer {
+        margin-top: 8px;
+        display: flex;
+        justify-content: flex-start;
+    }
+    
+    .user-message .message-header,
+    .user-message .message-text {
+        color: white;
+    }
+    
+    .user-message .message-footer .mud-chip {
+        background-color: rgba(255, 255, 255, 0.2);
+        color: white;
+    }
+    
+    /* Smooth animations for message loading */
+    @@keyframes messageSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .message-bubble {
+        animation: messageSlideIn 0.3s ease-out;
+    }
+    
+    /* Enhanced card styling */
+    .mud-card {
+        border-radius: 12px;
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+    
+    .mud-card-header {
+        border-bottom: 1px solid var(--mud-palette-lines-default);
+    }
+    
+    /* Timeline styling for handoffs */
+    .mud-timeline-item {
+        margin-bottom: 16px;
+    }
+    
+    .mud-timeline-item .mud-card {
+        border-left: 3px solid var(--mud-palette-primary);
+    }
+</style>
+
+@code {
+    [Parameter] public string ConversationId { get; set; } = default!;
+    
+    private bool loading = true;
+    private ConversationDetailsDto? conversationDetails;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConversation();
+    }
+
+    private async Task LoadConversation()
+    {
+        loading = true;
+        try
+        {
+            var query = new GetConversationByIdQuery(ConversationId);
+            var result = await Mediator.Send(query);
+            
+            if (result.Succeeded)
+            {
+                conversationDetails = result.Data;
+                Snackbar.Add(L["Conversation loaded successfully"], Severity.Success);
+            }
+            else
+            {
+                conversationDetails = null;
+                var errorMessage = string.Join(", ", result.Errors ?? new[] { "Unknown error" });
+                Snackbar.Add($"{L["Failed to load conversation"]}: {errorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading conversation: {ex.Message}");
+            conversationDetails = null;
+            Snackbar.Add($"{L["Error loading conversation"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private Color GetStatusColor(ConversationStatus status)
+    {
+        return status switch
+        {
+            ConversationStatus.Active => Color.Success,
+            ConversationStatus.Completed => Color.Secondary,
+            ConversationStatus.Abandoned => Color.Warning,
+            ConversationStatus.Archived => Color.Info,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetHandoffColor(HandoffStatus status)
+    {
+        return status switch
+        {
+            HandoffStatus.Initiated => Color.Warning,
+            HandoffStatus.Accepted => Color.Info,
+            HandoffStatus.Completed => Color.Success,
+            HandoffStatus.Failed => Color.Error,
+            HandoffStatus.Cancelled => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private string GetMessageAlignment(string role)
+    {
+        return role == "user" ? "d-flex justify-start" : "d-flex justify-end";
+    }
+
+    private string GetMessageCardClass(string role)
+    {
+        return role == "user" ? "mud-theme-primary" : "mud-elevation-1";
+    }
+
+    private string GetMessageStyle(string role)
+    {
+        return role == "user" 
+            ? "background-color: var(--mud-palette-primary); color: white;" 
+            : "background-color: var(--mud-palette-surface);";
+    }
+
+    private string GetMessageContainerClass(string role)
+    {
+        return role == "user" ? "d-flex justify-end" : "d-flex justify-start";
+    }
+
+    private string GetMessageBubbleClass(string role)
+    {
+        return role == "user" 
+            ? "message-bubble user-message" 
+            : "message-bubble assistant-message";
+    }
+
+    private string GetMessageBubbleStyle(string role)
+    {
+        return role == "user"
+            ? "max-width: 70%; background: linear-gradient(135deg, var(--mud-palette-primary) 0%, var(--mud-palette-primary-darken) 100%); color: white; margin-left: auto;"
+            : "max-width: 70%; background: var(--mud-palette-surface); border: 1px solid var(--mud-palette-lines-default); margin-right: auto;";
+    }
+
+    private Color GetMessageAvatarColor(string role)
+    {
+        return role == "user" ? Color.Primary : Color.Secondary;
+    }
+
+    private string GetMessageAvatarIcon(string role)
+    {
+        return role == "user" ? "U" : role switch
+        {
+            "assistant" => "A",
+            "agent" => "AG",
+            "system" => "S",
+            _ => "?"
+        };
+    }
+
+    private string GetRoleDisplayName(string role)
+    {
+        return role switch
+        {
+            "user" => L["User"],
+            "assistant" => L["Assistant"],
+            "agent" => L["Agent"],
+            "system" => L["System"],
+            _ => role ?? L["Unknown"]
+        };
+    }
+
+    private Color GetRoleChipColor(string role)
+    {
+        return role switch
+        {
+            "assistant" => Color.Info,
+            "agent" => Color.Success,
+            "system" => Color.Warning,
+            _ => Color.Default
+        };
+    }
+}

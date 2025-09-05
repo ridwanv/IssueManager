@@ -24,6 +24,18 @@ public interface IApplicationDbContext: IAsyncDisposable
     DbSet<InternalNote> InternalNotes { get; set; }
     DbSet<LoginAudit> LoginAudits { get; set; }
     DbSet<UserLoginRiskSummary> UserLoginRiskSummaries { get; set; }
+    
+    // Identity
+    DbSet<ApplicationUser> Users { get; set; }
+    
+    // Conversation escalation entities
+    DbSet<Conversation> Conversations { get; set; }
+    DbSet<ConversationMessage> ConversationMessages { get; set; }
+    DbSet<ConversationAttachment> ConversationAttachments { get; set; }
+    DbSet<Agent> Agents { get; set; }
+    DbSet<ConversationParticipant> ConversationParticipants { get; set; }
+    DbSet<ConversationHandoff> ConversationHandoffs { get; set; }
+    
     ChangeTracker ChangeTracker { get; }
 
     DbSet<DataProtectionKey> DataProtectionKeys { get; set; }

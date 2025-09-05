@@ -1,4 +1,4 @@
-@using ApexCharts
+﻿@using ApexCharts
 @using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
 @using Microsoft.Extensions.Localization
 @using CleanArchitecture.Blazor.Server.UI.Services
@@ -51,7 +51,14 @@ else
     {
         if (_shouldRender && Chart != null)
         {
-            await Chart.RenderAsync();
+            try
+            {
+                await Chart.RenderAsync();
+            }
+            catch (NullReferenceException)
+            {
+                // Chart may not be fully initialized yet; ignore and try again on next render
+            }
             _shouldRender = false;
         }
     }
