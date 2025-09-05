@@ -17,7 +17,13 @@
       "Bash(dotnet tool run dotnet-ef migrations add:*)",
       "Bash(dotnet run:*)",
       "Bash(powershell:*)",
-      "Bash(dotnet ef migrations:*)"
+      "Bash(dotnet ef migrations:*)",
+      "Bash(dotnet ef database update:*)",
+      "Bash(find:*)",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(claude mcp)"
     ],
     "deny": [],
     "ask": [],

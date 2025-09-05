@@ -1,0 +1,38 @@
+@page "/simple-dashboard"
+@inject IStringLocalizer<Dashboard> L
+
+<PageTitle>Simple Dashboard Test</PageTitle>
+
+<h1>DASHBOARD TEST</h1>
+<p>If you see this, basic rendering works!</p>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudStack Spacing="4">
+        <!-- Basic Header Test -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+                <MudIcon Icon="@Icons.Material.Filled.Dashboard" Color="Color.Primary" Size="Size.Large" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h4" Class="font-weight-bold">SIMPLE DASHBOARD HEADER</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        This is a simple test to see if MudBlazor components render
+                    </MudText>
+                </MudStack>
+            </MudStack>
+        </MudStack>
+
+        <!-- Test Card -->
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6">Test Card</MudText>
+            <MudText>This should appear if MudBlazor is working.</MudText>
+        </MudPaper>
+    </MudStack>
+</MudContainer>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Minimal initialization
+        await Task.CompletedTask;
+    }
+}

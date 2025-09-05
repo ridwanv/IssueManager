@@ -1,0 +1,89 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@inject IStringLocalizer<SharedResource> L
+
+<MudCard Class="mb-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">@L["Audit Trail"]</MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    
+    <MudCardContent>
+        @if (EventLogs?.Any() == true)
+        {
+            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                @foreach (var eventLog in EventLogs.OrderByDescending(e => e.CreatedUtc))
+                {
+                    <MudTimelineItem Color="GetEventColor(eventLog.Type)" Variant="Variant.Filled" Size="Size.Small">
+                        <ItemOpposite>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @eventLog.CreatedUtc.ToString("MMM dd, yyyy HH:mm")
+                            </MudText>
+                        </ItemOpposite>
+                        <ItemContent>
+                            <MudCard Elevation="0" Class="border-1">
+                                <MudCardContent Class="py-2">
+                                    <div class="d-flex align-center gap-2 mb-1">
+                                        <MudIcon Icon="@GetEventIcon(eventLog.Type)" Size="Size.Small" />
+                                        <MudText Typo="Typo.subtitle2">
+                                            @FormatEventType(eventLog.Type)
+                                        </MudText>
+                                    </div>
+                                    <MudText Typo="Typo.body2" Class="ml-6">
+                                        @eventLog.Payload
+                                    </MudText>
+                                    @if (!string.IsNullOrEmpty(eventLog.CreatedBy))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-6">
+                                            @L["by"] @eventLog.CreatedBy
+                                        </MudText>
+                                    }
+                                </MudCardContent>
+                            </MudCard>
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        }
+        else
+        {
+            <div class="text-center py-4">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @L["No audit trail entries yet"]
+                </MudText>
+            </div>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public IEnumerable<EventLogDto>? EventLogs { get; set; }
+
+    private static Color GetEventColor(string eventType) => eventType.ToLowerInvariant() switch
+    {
+        var x when x.Contains("create") => Color.Success,
+        var x when x.Contains("status") => Color.Info,
+        var x when x.Contains("priority") => Color.Warning,
+        var x when x.Contains("assign") => Color.Primary,
+        var x when x.Contains("note") => Color.Secondary,
+        var x when x.Contains("error") || x.Contains("fail") => Color.Error,
+        _ => Color.Default
+    };
+
+    private static string GetEventIcon(string eventType) => eventType.ToLowerInvariant() switch
+    {
+        var x when x.Contains("create") => Icons.Material.Filled.Add,
+        var x when x.Contains("status") => Icons.Material.Filled.ChangeCircle,
+        var x when x.Contains("priority") => Icons.Material.Filled.PriorityHigh,
+        var x when x.Contains("assign") => Icons.Material.Filled.Person,
+        var x when x.Contains("note") => Icons.Material.Filled.Note,
+        var x when x.Contains("error") || x.Contains("fail") => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.Info
+    };
+
+    private string FormatEventType(string eventType)
+    {
+        // Convert camelCase/PascalCase to readable text
+        return System.Text.RegularExpressions.Regex.Replace(eventType, "([a-z])([A-Z])", "$1 $2");
+    }
+}

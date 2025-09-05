@@ -177,6 +177,16 @@ public static class DependencyInjection
         // Configure SecurityAnalysisService with options
         services.Configure<SecurityAnalysisOptions>(configuration.GetSection(SecurityAnalysisOptions.SectionName));
         services.AddScoped<ISecurityAnalysisService, SecurityAnalysisService>();
+        
+        // Configure IssueSimilarityService for OpenAI-powered issue comparison
+        services.AddScoped<IIssueSimilarityService, IssueSimilarityService>();
+
+        // Configure HttpClient for ProactiveMessagingService
+        services.AddHttpClient<IProactiveMessagingService, ProactiveMessagingService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.Add("User-Agent", "CleanArchitectureBlazorServer/1.0");
+        });
 
         return services
             .AddScoped<IValidationService, ValidationService>()

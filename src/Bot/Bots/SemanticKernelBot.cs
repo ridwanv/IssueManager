@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 using Plugins;
-using MediatR;
+using IssueManager.Bot.Services;
 
 namespace IssueManager.Bot.Bots
 {
@@ -14,9 +14,9 @@ namespace IssueManager.Bot.Bots
         private readonly string _deployment;
         private readonly string _apiKey;
         private readonly TokenCredential _credential;
-        private readonly IMediator _mediator;
+        private readonly IssueManagerApiClient _apiClient;
 
-        public SemanticKernelBot(IConfiguration config, ConversationState conversationState, UserState userState, AzureOpenAIClient aoaiClient, T dialog, IMediator mediator): base(config, conversationState, userState, dialog)
+        public SemanticKernelBot(IConfiguration config, ConversationState conversationState, UserState userState, AzureOpenAIClient aoaiClient, T dialog, IssueManagerApiClient apiClient): base(config, conversationState, userState, dialog)
         {
             _instructions = config["LLM_INSTRUCTIONS"];
             _welcomeMessage = config.GetValue("LLM_WELCOME_MESSAGE", "Hello and welcome to the Semantic Kernel Bot Dotnet!");
@@ -24,7 +24,7 @@ namespace IssueManager.Bot.Bots
             _deployment = config["AZURE_OPENAI_DEPLOYMENT_NAME"];
             _apiKey = config["AZURE_OPENAI_API_KEY"];
             _credential = new DefaultAzureCredential();
-            _mediator = mediator;
+            _apiClient = apiClient;
         }
 
         // Modify onMembersAdded as needed
@@ -67,40 +67,52 @@ namespace IssueManager.Bot.Bots
                 .AddAzureOpenAIChatCompletion(_deployment, _endpoint, _apiKey)
                 .Build();
 
-            // Add custom plugins
-            kernel.Plugins.Add(kernel.CreatePluginFromObject(new IssueIntakePlugin(conversationData, turnContext, _mediator)));
+            // Add custom plugins with API client instead of MediatR
+            kernel.Plugins.Add(kernel.CreatePluginFromObject(new IssueIntakePlugin(conversationData, turnContext, _apiClient)));
 
-            var promptExecutionSettings = new AzureOpenAIPromptExecutionSettings()
-            {
-                ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
-            };
+            // Create ChatCompletionService
+            var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 
-            var history = new ChatHistory();
+            // Execute conversation
+            var chatHistory = new ChatHistory();
             foreach (var turn in conversationData.History)
             {
-                if (turn.Role == "user")
+                switch (turn.Role)
                 {
-                    history.AddUserMessage(turn.Message);
-                }
-                else
-                {
-                    history.AddAssistantMessage(turn.Message);
+                    case "system":
+                        chatHistory.AddSystemMessage(turn.Message);
+                        break;
+                    case "user":
+                        chatHistory.AddUserMessage(turn.Message);
+                        break;
+                    case "assistant":
+                        chatHistory.AddAssistantMessage(turn.Message);
+                        break;
                 }
             }
 
-            var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
+            var executionSettings = new OpenAIPromptExecutionSettings
+            {
+                ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
+                Temperature = 0.7,
+                MaxTokens = 2000
+            };
 
-            var answer = await chatCompletionService.GetChatMessageContentAsync(history, promptExecutionSettings, kernel);
+            var response = await chatCompletionService.GetChatMessageContentAsync(
+                chatHistory,
+                executionSettings,
+                kernel,
+                cancellationToken);
 
-            var response = answer.ToString();
+            // Add response to conversation history
+            conversationData.AddTurn("assistant", response.Content);
 
-            // Add assistant message to history
-            conversationData.AddTurn("assistant", response);
+            // Save conversation state
+            await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
 
-            // Respond back to user
-            await turnContext.SendActivityAsync(MessageFactory.Text(response), cancellationToken);
+            // Send response to user
+            await turnContext.SendActivityAsync(MessageFactory.Text(response.Content), cancellationToken);
 
-            // Return true if bot should run next handlers
             return true;
         }
     }

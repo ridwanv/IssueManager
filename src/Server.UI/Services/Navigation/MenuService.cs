@@ -15,6 +15,20 @@ public class MenuService : IMenuService
                 new() { Title = "Home", Icon = Icons.Material.Filled.Home, Href = "/" },
                 new()
                 {
+                    Title = "Issues",
+                    Icon = Icons.Material.Filled.BugReport,
+                    Href = "/issues",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "My Issues",
+                    Icon = Icons.Material.Filled.AssignmentInd,
+                    Href = "/my-issues",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
                     Title = "E-Commerce",
                     Icon = Icons.Material.Filled.ShoppingCart,
                     PageStatus = PageStatus.Completed,
@@ -41,30 +55,30 @@ public class MenuService : IMenuService
                         }
                     }
                 },
-                new()
-                {
-                    Title = "Analytics",
-                    Roles = new[] { RoleName.Admin, RoleName.Users },
-                    Icon = Icons.Material.Filled.Analytics,
-                    Href = "/analytics",
-                    PageStatus = PageStatus.ComingSoon
-                },
-                new()
-                {
-                    Title = "Banking",
-                    Roles = new[] { RoleName.Admin, RoleName.Users },
-                    Icon = Icons.Material.Filled.Money,
-                    Href = "/banking",
-                    PageStatus = PageStatus.ComingSoon
-                },
-                new()
-                {
-                    Title = "Booking",
-                    Roles = new[] { RoleName.Admin, RoleName.Users },
-                    Icon = Icons.Material.Filled.CalendarToday,
-                    Href = "/booking",
-                    PageStatus = PageStatus.ComingSoon
-                }
+                //new()
+                //{
+                //    Title = "Analytics",
+                //    Roles = new[] { RoleName.Admin, RoleName.Users },
+                //    Icon = Icons.Material.Filled.Analytics,
+                //    Href = "/analytics",
+                //    PageStatus = PageStatus.ComingSoon
+                //},
+                //new()
+                //{
+                //    Title = "Banking",
+                //    Roles = new[] { RoleName.Admin, RoleName.Users },
+                //    Icon = Icons.Material.Filled.Money,
+                //    Href = "/banking",
+                //    PageStatus = PageStatus.ComingSoon
+                //},
+                //new()
+                //{
+                //    Title = "Booking",
+                //    Roles = new[] { RoleName.Admin, RoleName.Users },
+                //    Icon = Icons.Material.Filled.CalendarToday,
+                //    Href = "/booking",
+                //    PageStatus = PageStatus.ComingSoon
+                //}
             }
         },
         new MenuSectionModel

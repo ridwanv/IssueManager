@@ -1,0 +1,384 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetDashboardMetrics
+@using CleanArchitecture.Blazor.Domain.Enums
+@using DashboardFiltersModel = CleanArchitecture.Blazor.Server.UI.Models.DashboardFiltersModel
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudStack Spacing="3">
+        <!-- Header -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Dashboard" Color="Color.Primary" Size="Size.Medium" />
+                <MudText Typo="Typo.h6">@L["Issue Status Overview"]</MudText>
+            </MudStack>
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    @L["Last 30 days"]
+                </MudText>
+                <MudTooltip Text="@L["Refresh Data"]">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                                  Size="Size.Small" 
+                                  OnClick="OnRefreshClick" />
+                </MudTooltip>
+            </MudStack>
+        </MudStack>
+
+        <!-- Status Distribution Cards -->
+        <MudGrid>
+            @foreach (var status in GetStatusDistribution())
+            {
+                <MudItem xs="6" sm="4" md="2">
+                    <MudPaper Class="@($"pa-3 text-center status-card {GetStatusClass(status.Status)}")"
+                              Style="@GetStatusCardStyle(status.Status)"
+                              Elevation="1">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@GetStatusIcon(status.Status)" 
+                                    Color="@GetStatusColor(status.Status)" 
+                                    Size="Size.Medium" />
+                            <MudText Typo="Typo.h5" Color="@GetStatusColor(status.Status)" 
+                                    Class="font-weight-bold">
+                                @status.Count.ToString("N0")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="status-label">
+                                @GetStatusDisplayName(status.Status)
+                            </MudText>
+                            @if (Metrics?.StatusDistribution.Values.Sum() > 0)
+                            {
+                                <MudText Typo="Typo.caption" Class="text-muted">
+                                    @($"{(double)status.Count / Metrics.StatusDistribution.Values.Sum() * 100:F1}%")
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <!-- Priority Breakdown -->
+        <MudDivider />
+        
+        <MudText Typo="Typo.subtitle1" Class="font-weight-medium">@L["Priority Breakdown"]</MudText>
+        
+        <MudGrid>
+            @foreach (var priority in GetPriorityDistribution())
+            {
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-3 priority-card" 
+                              Style="@GetPriorityCardStyle(priority.Priority)"
+                              Elevation="1">
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@GetPriorityIcon(priority.Priority)" 
+                                    Color="@GetPriorityColor(priority.Priority)" 
+                                    Size="Size.Medium" />
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.h6" Color="@GetPriorityColor(priority.Priority)">
+                                    @priority.Count.ToString("N0")
+                                </MudText>
+                                <MudText Typo="Typo.caption">
+                                    @GetPriorityDisplayName(priority.Priority)
+                                </MudText>
+                            </MudStack>
+                        </MudStack>
+                        
+                        <!-- Priority progress bar -->
+                        @if (Metrics?.PriorityDistribution.Values.Sum() > 0)
+                        {
+                            var percentage = (double)priority.Count / Metrics.PriorityDistribution.Values.Sum() * 100;
+                            <MudProgressLinear Value="@percentage" 
+                                              Color="@GetPriorityColor(priority.Priority)" 
+                                              Class="mt-2" 
+                                              Size="Size.Small" />
+                        }
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <!-- Category Distribution -->
+        <MudDivider />
+        
+        <MudText Typo="Typo.subtitle1" Class="font-weight-medium">@L["Category Distribution"]</MudText>
+        
+        <MudGrid>
+            @foreach (var category in GetCategoryDistribution())
+            {
+                <MudItem xs="6" sm="3">
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudPaper Class="pa-2 category-icon" 
+                                  Style="@GetCategoryIconStyle(category.Category)"
+                                  Elevation="0">
+                            <MudIcon Icon="@GetCategoryIcon(category.Category)" 
+                                    Color="@GetCategoryColor(category.Category)" 
+                                    Size="Size.Large" />
+                        </MudPaper>
+                        <MudText Typo="Typo.h6" Color="@GetCategoryColor(category.Category)">
+                            @category.Count.ToString("N0")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Align="Align.Center">
+                            @GetCategoryDisplayName(category.Category)
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <!-- Channel Performance -->
+        @if (GetChannelDistribution().Any())
+        {
+            <MudDivider />
+            
+            <MudText Typo="Typo.subtitle1" Class="font-weight-medium">@L["Channel Distribution"]</MudText>
+            
+            <MudGrid>
+                @foreach (var channel in GetChannelDistribution())
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudPaper Class="pa-3 channel-card" Outlined="true">
+                            <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudIcon Icon="@GetChannelIcon(channel.Channel)" 
+                                            Color="Color.Primary" />
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body1">@channel.Channel</MudText>
+                                        <MudText Typo="Typo.caption" Class="text-muted">
+                                            @L["Issues reported"]
+                                        </MudText>
+                                    </MudStack>
+                                </MudStack>
+                                <MudText Typo="Typo.h6" Color="Color.Primary">
+                                    @channel.Count.ToString("N0")
+                                </MudText>
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </MudStack>
+</MudPaper>
+
+<style>
+    .status-card {
+        transition: all 0.2s ease-in-out;
+        cursor: pointer;
+        border-radius: 12px;
+    }
+
+    .status-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+
+    .priority-card {
+        border-radius: 8px;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .priority-card:hover {
+        transform: translateX(4px);
+    }
+
+    .category-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .channel-card {
+        border-radius: 8px;
+        border-left: 4px solid var(--mud-palette-primary);
+    }
+
+    .status-label {
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    .font-weight-medium {
+        font-weight: 500;
+    }
+
+    .text-muted {
+        opacity: 0.7;
+    }
+</style>
+
+@code {
+    [Parameter] public DashboardMetricsDto? Metrics { get; set; }
+    [Parameter] public EventCallback OnRefreshClick { get; set; }
+    [Inject] private IStringLocalizer<IssueStatusBoard> L { get; set; } = default!;
+
+    private IEnumerable<(IssueStatus Status, int Count)> GetStatusDistribution()
+    {
+        if (Metrics?.StatusDistribution == null) return Enumerable.Empty<(IssueStatus, int)>();
+        
+        return Enum.GetValues<IssueStatus>()
+            .Select(status => (status, Metrics.StatusDistribution.GetValueOrDefault(status, 0)))
+            .OrderByDescending(x => x.Item2);
+    }
+
+    private IEnumerable<(IssuePriority Priority, int Count)> GetPriorityDistribution()
+    {
+        if (Metrics?.PriorityDistribution == null) return Enumerable.Empty<(IssuePriority, int)>();
+        
+        return Enum.GetValues<IssuePriority>()
+            .Select(priority => (priority, Metrics.PriorityDistribution.GetValueOrDefault(priority, 0)))
+            .OrderByDescending(x => (int)x.Item1);
+    }
+
+    private IEnumerable<(IssueCategory Category, int Count)> GetCategoryDistribution()
+    {
+        if (Metrics?.CategoryDistribution == null) return Enumerable.Empty<(IssueCategory, int)>();
+        
+        return Enum.GetValues<IssueCategory>()
+            .Select(category => (category, Metrics.CategoryDistribution.GetValueOrDefault(category, 0)))
+            .OrderByDescending(x => x.Item2);
+    }
+
+    private IEnumerable<(string Channel, int Count)> GetChannelDistribution()
+    {
+        if (Metrics?.ChannelDistribution == null) return Enumerable.Empty<(string, int)>();
+        
+        return Metrics.ChannelDistribution
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => (kv.Key, kv.Value));
+    }
+
+    // Status Methods
+    private string GetStatusIcon(IssueStatus status) => status switch
+    {
+        IssueStatus.New => Icons.Material.Filled.FiberNew,
+        IssueStatus.InProgress => Icons.Material.Filled.PlayArrow,
+        IssueStatus.Resolved => Icons.Material.Filled.CheckCircle,
+        IssueStatus.Closed => Icons.Material.Filled.Lock,
+        IssueStatus.OnHold => Icons.Material.Filled.Pause,
+        _ => Icons.Material.Filled.Help
+    };
+
+    private Color GetStatusColor(IssueStatus status) => status switch
+    {
+        IssueStatus.New => Color.Info,
+        IssueStatus.InProgress => Color.Warning,
+        IssueStatus.Resolved => Color.Success,
+        IssueStatus.Closed => Color.Dark,
+        IssueStatus.OnHold => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetStatusClass(IssueStatus status) => status switch
+    {
+        IssueStatus.New => "status-new",
+        IssueStatus.InProgress => "status-progress",
+        IssueStatus.Resolved => "status-resolved",
+        IssueStatus.Closed => "status-closed",
+        IssueStatus.OnHold => "status-hold",
+        _ => ""
+    };
+
+    private string GetStatusCardStyle(IssueStatus status) => status switch
+    {
+        IssueStatus.New => "border-left: 4px solid var(--mud-palette-info);",
+        IssueStatus.InProgress => "border-left: 4px solid var(--mud-palette-warning);",
+        IssueStatus.Resolved => "border-left: 4px solid var(--mud-palette-success);",
+        IssueStatus.Closed => "border-left: 4px solid var(--mud-palette-dark);",
+        IssueStatus.OnHold => "border-left: 4px solid var(--mud-palette-secondary);",
+        _ => ""
+    };
+
+    private string GetStatusDisplayName(IssueStatus status) => status switch
+    {
+        IssueStatus.New => L["New"],
+        IssueStatus.InProgress => L["In Progress"],
+        IssueStatus.Resolved => L["Resolved"],
+        IssueStatus.Closed => L["Closed"],
+        IssueStatus.OnHold => L["On Hold"],
+        _ => status.ToString()
+    };
+
+    // Priority Methods
+    private string GetPriorityIcon(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Icons.Material.Filled.PriorityHigh,
+        IssuePriority.High => Icons.Material.Filled.KeyboardArrowUp,
+        IssuePriority.Medium => Icons.Material.Filled.Remove,
+        IssuePriority.Low => Icons.Material.Filled.KeyboardArrowDown,
+        _ => Icons.Material.Filled.Help
+    };
+
+    private Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetPriorityCardStyle(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => "border-left: 4px solid var(--mud-palette-error);",
+        IssuePriority.High => "border-left: 4px solid var(--mud-palette-warning);",
+        IssuePriority.Medium => "border-left: 4px solid var(--mud-palette-info);",
+        IssuePriority.Low => "border-left: 4px solid var(--mud-palette-success);",
+        _ => ""
+    };
+
+    private string GetPriorityDisplayName(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => L["Critical"],
+        IssuePriority.High => L["High"],
+        IssuePriority.Medium => L["Medium"],
+        IssuePriority.Low => L["Low"],
+        _ => priority.ToString()
+    };
+
+    // Category Methods
+    private string GetCategoryIcon(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => Icons.Material.Filled.BugReport,
+        IssueCategory.Billing => Icons.Material.Filled.Payment,
+        IssueCategory.General => Icons.Material.Filled.Help,
+        IssueCategory.Feature => Icons.Material.Filled.Star,
+        _ => Icons.Material.Filled.Category
+    };
+
+    private Color GetCategoryColor(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => Color.Error,
+        IssueCategory.Billing => Color.Warning,
+        IssueCategory.General => Color.Info,
+        IssueCategory.Feature => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetCategoryIconStyle(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => "background-color: rgba(244, 67, 54, 0.1);",
+        IssueCategory.Billing => "background-color: rgba(255, 193, 7, 0.1);",
+        IssueCategory.General => "background-color: rgba(33, 150, 243, 0.1);",
+        IssueCategory.Feature => "background-color: rgba(76, 175, 80, 0.1);",
+        _ => "background-color: rgba(158, 158, 158, 0.1);"
+    };
+
+    private string GetCategoryDisplayName(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => L["Technical"],
+        IssueCategory.Billing => L["Billing"],
+        IssueCategory.General => L["General"],
+        IssueCategory.Feature => L["Feature"],
+        _ => category.ToString()
+    };
+
+    // Channel Methods
+    private string GetChannelIcon(string channel) => channel.ToLowerInvariant() switch
+    {
+        "whatsapp" => Icons.Material.Filled.Chat,
+        "email" => Icons.Material.Filled.Email,
+        "web" => Icons.Material.Filled.Language,
+        "phone" => Icons.Material.Filled.Phone,
+        _ => Icons.Material.Filled.ContactSupport
+    };
+}

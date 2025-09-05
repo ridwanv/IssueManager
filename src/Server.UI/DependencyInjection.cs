@@ -36,9 +36,24 @@ public static class DependencyInjection
     /// <param name="services">The service collection.</param>
     /// <param name="config">The configuration.</param>
     /// <returns>The updated service collection.</returns>
-    public static IServiceCollection AddServerUI(this IServiceCollection services, IConfiguration config)
+    public static IServiceCollection AddServerUI(this IServiceCollection services, IConfiguration config, IWebHostEnvironment? environment = null)
     {
-        services.AddRazorComponents().AddInteractiveServerComponents().AddHubOptions(options=> options.MaximumReceiveMessageSize = 64 * 1024);
+        services.AddRazorComponents()
+            .AddInteractiveServerComponents(options =>
+            {
+                options.DetailedErrors = environment?.IsDevelopment() ?? false;
+                options.DisconnectedCircuitMaxRetained = 100;
+                options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
+                options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(1);
+                options.MaxBufferedUnacknowledgedRenderBatches = 10;
+            })
+            .AddHubOptions(options => 
+            {
+                options.MaximumReceiveMessageSize = 64 * 1024;
+                options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+                options.HandshakeTimeout = TimeSpan.FromSeconds(15);
+                options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+            });
         services.AddCascadingAuthenticationState();
   
         services.AddMudServices(config =>
@@ -88,11 +103,54 @@ public static class DependencyInjection
 
         services.AddControllers();
 
+        // Add Swagger/OpenAPI
+        services.AddEndpointsApiExplorer();
+        services.AddSwaggerGen(c =>
+        {
+            c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+            {
+                Title = "IssueManager UI API",
+                Version = "v1",
+                Description = "REST API for Issue Management System (UI Project)",
+                Contact = new Microsoft.OpenApi.Models.OpenApiContact
+                {
+                    Name = "IssueManager Team",
+                    Email = "support@issuemanager.com"
+                }
+            });
+            
+            // Include XML comments if available
+            var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+            {
+                c.IncludeXmlComments(xmlPath);
+            }
+        });
+
+        // Add CORS for API endpoints
+        services.AddCors(options =>
+        {
+            options.AddPolicy("ApiCorsPolicy", policy =>
+            {
+                policy.AllowAnyOrigin()
+                      .AllowAnyMethod()
+                      .AllowAnyHeader();
+            });
+        });
+        
         services.AddScoped<IApplicationHubWrapper, ServerHubWrapper>()
             .AddSignalR(options =>
             {
                 options.MaximumReceiveMessageSize = 64 * 1024;
                 options.AddFilter<UserContextHubFilter>();
+                
+                // Enhanced connection settings for better reliability
+                options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+                options.HandshakeTimeout = TimeSpan.FromSeconds(15);
+                options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+                options.MaximumParallelInvocationsPerClient = 1;
+                options.EnableDetailedErrors = environment?.IsDevelopment() ?? false;
             });
         
       
@@ -146,6 +204,15 @@ public static class DependencyInjection
         if (app.Environment.IsDevelopment())
         {
             app.UseMigrationsEndPoint();
+            
+            // Enable Swagger in development
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "IssueManager UI API v1");
+                c.RoutePrefix = "swagger"; // Access Swagger UI at /swagger
+                c.DocumentTitle = "IssueManager UI API Documentation";
+            });
         }
         else
         {
@@ -158,8 +225,34 @@ public static class DependencyInjection
         app.MapHealthChecks("/health");
         app.UseAuthentication();
         app.UseAuthorization();
+        
+        // Enable CORS for API endpoints
+        app.UseCors("ApiCorsPolicy");
+        
         app.UseAntiforgery();
         app.UseHttpsRedirection();
+        
+        // Configure static files with proper caching headers
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+            {
+                // For development, disable caching of static files to avoid refresh issues
+                if (app.Environment.IsDevelopment())
+                {
+                    ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+                    ctx.Context.Response.Headers.Pragma = "no-cache";
+                    ctx.Context.Response.Headers.Expires = "-1";
+                }
+                else
+                {
+                    // In production, cache static assets for 1 hour
+                    const int durationInSeconds = 60 * 60; // 1 hour
+                    ctx.Context.Response.Headers.CacheControl = $"public,max-age={durationInSeconds}";
+                }
+            }
+        });
+        
         app.MapStaticAssets();
         
 
@@ -195,8 +288,13 @@ public static class DependencyInjection
             Authorization = new[] { new HangfireDashboardAuthorizationFilter() },
             AsyncAuthorization = new[] { new HangfireDashboardAsyncAuthorizationFilter() }
         });
-        app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+        app.MapRazorComponents<App>()
+            .AddInteractiveServerRenderMode()
+            .AllowAnonymous(); // Allow anonymous access to prevent auth issues
         app.MapHub<ServerHub>(ISignalRHub.Url);
+        
+        // Map API controllers
+        app.MapControllers();
 
         //QuestPDF License configuration
         Settings.License = LicenseType.Community;
@@ -204,10 +302,25 @@ public static class DependencyInjection
         // Add additional endpoints required by the Identity /Account Razor components.
         app.MapAdditionalIdentityEndpoints();
         app.UseForwardedHeaders();
+        // Enhanced WebSocket configuration for better SignalR reliability
         app.UseWebSockets(new WebSocketOptions()
-        { // We obviously need this
-            KeepAliveInterval = TimeSpan.FromSeconds(30), // Just in case
+        {
+            KeepAliveInterval = TimeSpan.FromSeconds(15),
+            AllowedOrigins = { "*" } // Allow all origins in development
         });
+        
+        // Add connection debugging middleware in development
+        if (app.Environment.IsDevelopment())
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.StartsWithSegments("/_blazor"))
+                {
+                    Console.WriteLine($"Blazor SignalR request: {context.Request.Method} {context.Request.Path}");
+                }
+                await next();
+            });
+        }
        
         return app;
     }

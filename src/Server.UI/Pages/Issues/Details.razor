@@ -1,0 +1,359 @@
+﻿@page "/issues/{Id:guid}"
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetIssueDetail
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetIssueTimeline
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Server.UI.Components.Issues
+@attribute [Authorize(Policy = Permissions.Issues.View)]
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+@inject IPermissionService PermissionService
+
+<PageTitle>@L["Issue Details"]</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pt-4">
+    @if (_loading)
+    {
+        <div class="d-flex justify-center align-center" style="height: 200px;">
+            <MudProgressCircular Indeterminate="true" />
+        </div>
+    }
+    else if (_issue == null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            @L["Issue not found"]
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            <!-- Main Issue Information -->
+            <MudItem xs="12" lg="8">
+                <MudPaper Class="pa-4 mb-4">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                        <div>
+                            <MudText Typo="Typo.h4" Class="mb-2">@_issue.Title</MudText>
+                            <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                                @L["Reference"] #@_issue.ReferenceNumber
+                            </MudText>
+                        </div>
+                        <div class="d-flex align-center gap-2">
+                            <MudButton Variant="Variant.Text" 
+                                       Size="Size.Small" 
+                                       StartIcon="Icons.Material.Filled.ArrowBack"
+                                       Href="/issues">
+                                @L["Back to Issues"]
+                            </MudButton>
+                        </div>
+                    </div>
+                    
+                    <MudDivider Class="mb-3" />
+                    
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudStack>
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Description"]</MudText>
+                                    <MudText Typo="Typo.body1">@_issue.Description</MudText>
+                                </div>
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Category"]</MudText>
+                                    <MudText Typo="Typo.body1">@_issue.Category.ToString()</MudText>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_issue.Channel))
+                                {
+                                    <div>
+                                        <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Channel"]</MudText>
+                                        <MudText Typo="Typo.body1">@_issue.Channel</MudText>
+                                    </div>
+                                }
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudStack>
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Reporter"]</MudText>
+                                    <MudText Typo="Typo.body1">
+                                        @if (_issue.ReporterContact != null)
+                                        {
+                                            @($"{_issue.ReporterContact.Name} ({_issue.ReporterContact.PhoneNumber})")
+                                        }
+                                        else
+                                        {
+                                            @L["Unknown"]
+                                        }
+                                    </MudText>
+                                </div>
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Created"]</MudText>
+                                    <MudText Typo="Typo.body1">@_issue.Created?.ToString("g")</MudText>
+                                </div>
+                                @if (_issue.LastModified.HasValue)
+                                {
+                                    <div>
+                                        <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Last Modified"]</MudText>
+                                        <MudText Typo="Typo.body1">@_issue.LastModified?.ToString("g")</MudText>
+                                    </div>
+                                }
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <!-- Attachments -->
+                @if (_issue.Attachments?.Any() == true)
+                {
+                    <MudPaper Class="pa-4 mb-4">
+                        <MudText Typo="Typo.h6" Class="mb-3">@L["Attachments"]</MudText>
+                        <MudGrid>
+                            @foreach (var attachment in _issue.Attachments)
+                            {
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudCard Elevation="1">
+                                        <MudCardContent Class="pa-3">
+                                            <div class="d-flex align-center gap-2 mb-2">
+                                                <MudIcon Icon="Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                                                <MudText Typo="Typo.body2">@attachment.Type</MudText>
+                                            </div>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @FormatFileSize(attachment.SizeBytes) • @attachment.CreatedUtc.ToString("g")
+                                            </MudText>
+                                            <div class="d-flex justify-space-between align-center mt-2">
+                                                <MudChip T="string" 
+                                                         Size="Size.Small" 
+                                                         Color="@GetScanStatusColor(attachment.ScanStatus)" 
+                                                         Variant="Variant.Filled">
+                                                    @attachment.ScanStatus
+                                                </MudChip>
+                                            </div>
+                                        </MudCardContent>
+                                    </MudCard>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    </MudPaper>
+                }
+
+                <!-- Internal Notes -->
+                <InternalNotesComponent IssueId="_issue.Id" 
+                                        InternalNotes="_issue.InternalNotes"
+                                        OnNoteAdded="OnNoteAdded" />
+            </MudItem>
+
+            <!-- Management Sidebar -->
+            <MudItem xs="12" lg="4">
+                <MudPaper Class="pa-4 mb-4">
+                    <MudText Typo="Typo.h6" Class="mb-3">@L["Issue Management"]</MudText>
+                    
+                    <MudStack>
+                        <!-- Status Update -->
+                        <IssueStatusUpdateComponent IssueId="_issue.Id" 
+                                                    CurrentStatus="_issue.Status"
+                                                    OnStatusUpdated="OnStatusUpdated" />
+
+                        <MudDivider />
+
+                        <!-- Priority Management -->
+                        <IssuePriorityComponent IssueId="_issue.Id" 
+                                                CurrentPriority="_issue.Priority"
+                                                OnPriorityUpdated="OnPriorityUpdated" />
+
+                        <MudDivider />
+
+                        <!-- Assignment Management -->
+                        <IssueAssignmentComponent IssueId="_issue.Id" 
+                                                  AssignedUserId="@GetAssignedUserId()"
+                                                  AssignedUserName="_issue.AssignedUserName"
+                                                  OnAssignmentUpdated="OnAssignmentUpdated" />
+                    </MudStack>
+                </MudPaper>
+
+                <!-- Linked Issues -->
+                <LinkedIssuesCard IssueId="_issue.Id" 
+                                  CanEdit="@(_canEdit)" 
+                                  OnLinkedIssuesUpdated="OnLinkedIssuesUpdated" />
+
+                <!-- Audit Trail -->
+                <AuditTrailComponent EventLogs="_issue.EventLogs" />
+
+                <!-- Enhanced Timeline -->
+                <IssueTimelineComponent TimelineEvents="_timelineEvents" />
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    
+    private IssueDetailDto? _issue;
+    private List<TimelineEventDto>? _timelineEvents;
+    private bool _loading = true;
+    private bool _canEdit = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canEdit = await PermissionService.HasPermissionAsync(Permissions.Issues.Edit);
+        await LoadIssue();
+    }
+
+    private async Task LoadIssue()
+    {
+        _loading = true;
+        try
+        {
+            // Load issue details and timeline in parallel
+            var issueTask = Mediator.Send(new GetIssueDetailQuery { Id = Id });
+            var timelineTask = Mediator.Send(new GetIssueTimelineQuery { IssueId = Id });
+            
+            var issueResult = await issueTask;
+            var timelineResult = await timelineTask;
+            
+            if (issueResult.Succeeded)
+            {
+                _issue = issueResult.Data;
+            }
+            else
+            {
+                Snackbar.Add(issueResult.Errors.FirstOrDefault() ?? L["Failed to load issue"], Severity.Error);
+            }
+            
+            if (timelineResult.Succeeded)
+            {
+                _timelineEvents = timelineResult.Data;
+            }
+            else
+            {
+                Snackbar.Add(timelineResult.Errors.FirstOrDefault() ?? L["Failed to load timeline"], Severity.Warning);
+                _timelineEvents = new List<TimelineEventDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error loading issue"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnStatusUpdated(IssueStatus newStatus)
+    {
+        if (_issue != null)
+        {
+            _issue.Status = newStatus;
+            StateHasChanged();
+            
+            // Efficiently reload only updated event logs instead of full issue
+            await RefreshEventLogs();
+        }
+    }
+
+    private async Task OnPriorityUpdated(IssuePriority newPriority)
+    {
+        if (_issue != null)
+        {
+            _issue.Priority = newPriority;
+            StateHasChanged();
+            
+            // Efficiently reload only updated event logs instead of full issue
+            await RefreshEventLogs();
+        }
+    }
+
+    private async Task OnAssignmentUpdated((Guid? UserId, string? UserName) assignment)
+    {
+        if (_issue != null)
+        {
+            _issue.AssignedUserId = assignment.UserId?.ToString();
+            _issue.AssignedUserName = assignment.UserName;
+            StateHasChanged();
+            
+            // Efficiently reload only updated event logs instead of full issue
+            await RefreshEventLogs();
+        }
+    }
+
+    private async Task OnNoteAdded(InternalNoteDto newNote)
+    {
+        if (_issue != null)
+        {
+            // Add the new note to the list optimistically
+            var notesList = _issue.InternalNotes.ToList();
+            notesList.Add(newNote);
+            _issue.InternalNotes = notesList;
+            StateHasChanged();
+            
+            // Efficiently reload only updated event logs instead of full issue
+            await RefreshEventLogs();
+        }
+    }
+
+    private async Task OnLinkedIssuesUpdated()
+    {
+        // Refresh the page data when linked issues are updated
+        await RefreshEventLogs();
+    }
+    
+    private async Task RefreshEventLogs()
+    {
+        // Reload timeline to show updated events
+        try
+        {
+            var timelineResult = await Mediator.Send(new GetIssueTimelineQuery { IssueId = Id });
+            if (timelineResult.Succeeded)
+            {
+                _timelineEvents = timelineResult.Data;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error refreshing timeline"]}: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private Guid? GetAssignedUserId()
+    {
+        if (_issue?.AssignedUserId != null && Guid.TryParse(_issue.AssignedUserId, out var userId))
+        {
+            return userId;
+        }
+        return null;
+    }
+
+    private static Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private static Color GetScanStatusColor(string scanStatus) => scanStatus?.ToLowerInvariant() switch
+    {
+        "clean" => Color.Success,
+        "pending" => Color.Warning,
+        "infected" => Color.Error,
+        "error" => Color.Error,
+        _ => Color.Secondary
+    };
+}

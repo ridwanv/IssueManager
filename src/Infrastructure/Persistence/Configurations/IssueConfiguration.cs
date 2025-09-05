@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -42,12 +42,12 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
             .HasConversion<int>()
             .IsRequired();
         
-        // WhatsApp metadata stored as JSON
+        // WhatsApp metadata and source message IDs - let EF use appropriate column type for each provider
         builder.Property(e => e.WhatsAppMetadata)
-            .HasColumnType("nvarchar(max)");
+            .HasMaxLength(450);
             
         builder.Property(e => e.SourceMessageIds)
-            .HasColumnType("nvarchar(max)");
+            .HasMaxLength(450);
         
         // Legacy fields
         builder.Property(e => e.ReporterPhone)
@@ -68,6 +68,10 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.Property(e => e.Summary)
             .HasMaxLength(500);
         
+        // Assignment fields
+        builder.Property(e => e.AssignedUserId)
+            .HasMaxLength(450);
+            
         // Configure relationships
         builder.HasOne(e => e.ReporterContact)
             .WithMany()
@@ -85,9 +89,9 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
             .HasForeignKey(a => a.IssueId)
             .OnDelete(DeleteBehavior.Cascade);
             
-        builder.HasMany(e => e.EventLogs)
-            .WithOne()
-            .HasForeignKey(el => el.IssueId)
+        builder.HasMany(e => e.InternalNotes)
+            .WithOne(n => n.Issue)
+            .HasForeignKey(n => n.IssueId)
             .OnDelete(DeleteBehavior.Cascade);
         
         // Tenant isolation

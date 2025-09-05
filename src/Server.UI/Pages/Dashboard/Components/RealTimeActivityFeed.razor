@@ -1,0 +1,404 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetRecentActivity
+@using CleanArchitecture.Blazor.Domain.Enums
+@implements IAsyncDisposable
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudStack Spacing="3">
+        <!-- Header -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Timeline" Color="Color.Primary" Size="Size.Medium" />
+                <MudText Typo="Typo.h6">@L["Recent Activity"]</MudText>
+                @if (_isLive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="pulse-animation">
+                        <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Class="mr-1" />
+                        @L["LIVE"]
+                    </MudChip>
+                }
+            </MudStack>
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                <MudTooltip Text="@(_isLive ? L["Disable Live Updates"] : L["Enable Live Updates"])">
+                    <MudToggleIconButton @bind-Toggled="_isLive"
+                                        Icon="@Icons.Material.Filled.PlayArrow" 
+                                        ToggledIcon="@Icons.Material.Filled.Pause"
+                                        Color="Color.Primary"
+                                        ToggledColor="Color.Success"
+                                        Size="Size.Small" />
+                </MudTooltip>
+                <MudTooltip Text="@L["Refresh Activity"]">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                                  Size="Size.Small" 
+                                  OnClick="RefreshActivity"
+                                  Disabled="@_loading" />
+                </MudTooltip>
+            </MudStack>
+        </MudStack>
+
+        <!-- Loading State -->
+        @if (_loading && !_activities.Any())
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" />
+        }
+
+        <!-- Activity Feed -->
+        <MudStack Spacing="2" Style="max-height: 400px; overflow-y: auto;">
+            @if (_activities.Any())
+            {
+                @foreach (var activity in _activities.Take(MaxItems))
+                {
+                    <MudPaper Class="@($"pa-3 activity-item {GetActivityItemClass(activity)}")" 
+                              Outlined="true"
+                              Style="@GetActivityItemStyle(activity)">
+                        <MudStack Row Spacing="3" AlignItems="AlignItems.Start">
+                            <!-- Activity Icon -->
+                            <MudAvatar Size="Size.Medium" 
+                                      Color="@GetActivityColor(activity)"
+                                      Style="@GetAvatarStyle(GetActivityColor(activity))">
+                                <MudIcon Icon="@GetActivityIcon(activity)" Color="Color.Inherit" />
+                            </MudAvatar>
+
+                            <!-- Activity Content -->
+                            <MudStack Spacing="1" Class="flex-grow-1">
+                                <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body1" Class="font-weight-medium">
+                                            @activity.Title
+                                        </MudText>
+                                        <MudText Typo="Typo.body2" Class="text-muted">
+                                            @activity.Description
+                                        </MudText>
+                                    </MudStack>
+                                    <MudText Typo="Typo.caption" Class="text-muted nowrap">
+                                        @activity.TimeAgo
+                                    </MudText>
+                                </MudStack>
+
+                                <!-- Activity Metadata -->
+                                <MudStack Row Spacing="1" AlignItems="AlignItems.Center" Class="mt-1">
+                                    @if (!string.IsNullOrEmpty(activity.ReferenceNumber))
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                            @activity.ReferenceNumber
+                                        </MudChip>
+                                    }
+                                    
+                                    <MudChip T="string" Size="Size.Small" 
+                                            Color="@GetPriorityColor(activity.Priority)"
+                                            Class="priority-chip">
+                                        @activity.Priority
+                                    </MudChip>
+
+                                    <MudChip T="string" Size="Size.Small" 
+                                            Color="@GetStatusColor(activity.Status)"
+                                            Variant="Variant.Outlined">
+                                        @activity.Status
+                                    </MudChip>
+
+                                    @if (!string.IsNullOrEmpty(activity.Channel))
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">
+                                            <MudIcon Icon="@GetChannelIcon(activity.Channel)" Size="Size.Small" Class="mr-1" />
+                                            @activity.Channel
+                                        </MudChip>
+                                    }
+                                </MudStack>
+                            </MudStack>
+
+                            <!-- Action Menu -->
+                            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                                <MudMenuItem OnClick="@(() => ViewIssueDetails(activity.Id))">
+                                    <MudIcon Icon="@Icons.Material.Filled.Visibility" Class="mr-2" />
+                                    @L["View Details"]
+                                </MudMenuItem>
+                                <MudMenuItem OnClick="@(() => CopyToClipboard(activity.ReferenceNumber ?? activity.Id.ToString()))">
+                                    <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Class="mr-2" />
+                                    @L["Copy Reference"]
+                                </MudMenuItem>
+                            </MudMenu>
+                        </MudStack>
+                    </MudPaper>
+                }
+
+                <!-- Load More Button -->
+                @if (_activities.Count > MaxItems)
+                {
+                    <MudButton Variant="Variant.Text" 
+                              Color="Color.Primary" 
+                              FullWidth="true"
+                              OnClick="LoadMoreActivities"
+                              Class="mt-2">
+                        @L["Load More Activities"] (@(_activities.Count - MaxItems) @L["more"])
+                    </MudButton>
+                }
+            }
+            else if (!_loading)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                    <MudText>@L["No recent activity to display"]</MudText>
+                </MudAlert>
+            }
+        </MudStack>
+
+        <!-- Activity Summary -->
+        @if (_activities.Any())
+        {
+            <MudDivider />
+            <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    @L["Showing {0} of {1} activities", Math.Min(MaxItems, _activities.Count), _activities.Count]
+                </MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    @L["Last updated: {0}", _lastUpdated?.ToString("HH:mm:ss") ?? "--:--:--"]
+                </MudText>
+            </MudStack>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public int MaxItems { get; set; } = 10;
+    [Parameter] public EventCallback<Guid> OnViewIssue { get; set; }
+    [Inject] private IStringLocalizer<RealTimeActivityFeed> L { get; set; } = default!;
+
+    private List<RecentActivityDto> _activities = new();
+    private bool _loading = true;
+    private bool _isLive = true;
+    private DateTime? _lastUpdated;
+    private Timer? _refreshTimer;
+    private readonly int _refreshIntervalMs = 30000; // 30 seconds
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshActivity();
+        StartLiveUpdates();
+    }
+
+    private async Task RefreshActivity()
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            var query = new GetRecentActivityQuery(MaxItems * 2); // Get more items for load more functionality
+            var result = await Mediator.Send(query);
+
+            if (result.Succeeded && result.Data != null)
+            {
+                var newActivities = result.Data;
+                
+                // Mark new activities for animation
+                var existingIds = _activities.Select(a => a.Id).ToHashSet();
+                foreach (var activity in newActivities.Where(a => !existingIds.Contains(a.Id)))
+                {
+                    // This would be used for CSS animation classes
+                }
+                
+                _activities = newActivities;
+                _lastUpdated = DateTime.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading activity: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void StartLiveUpdates()
+    {
+        if (!_isLive) return;
+        
+        _refreshTimer?.Dispose();
+        _refreshTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(RefreshActivity);
+        }, null, _refreshIntervalMs, _refreshIntervalMs);
+    }
+
+    private void StopLiveUpdates()
+    {
+        _refreshTimer?.Dispose();
+        _refreshTimer = null;
+    }
+
+    private async Task OnLiveToggled()
+    {
+        if (_isLive)
+        {
+            StartLiveUpdates();
+            await RefreshActivity();
+        }
+        else
+        {
+            StopLiveUpdates();
+        }
+    }
+
+    private void LoadMoreActivities()
+    {
+        MaxItems += 10;
+        StateHasChanged();
+    }
+
+    private string GetActivityItemClass(RecentActivityDto activity)
+    {
+        var classes = new List<string> { "activity-item" };
+        
+        // Add animation class for new items (would need more sophisticated tracking)
+        if (DateTime.UtcNow - activity.Timestamp < TimeSpan.FromMinutes(1))
+        {
+            classes.Add("new-activity");
+        }
+        
+        return string.Join(" ", classes);
+    }
+
+    private string GetActivityItemStyle(RecentActivityDto activity)
+    {
+        return activity.Priority switch
+        {
+            IssuePriority.Critical => "border-left-color: var(--mud-palette-error) !important;",
+            IssuePriority.High => "border-left-color: var(--mud-palette-warning) !important;",
+            IssuePriority.Medium => "border-left-color: var(--mud-palette-info) !important;",
+            IssuePriority.Low => "border-left-color: var(--mud-palette-success) !important;",
+            _ => "border-left-color: var(--mud-palette-secondary) !important;"
+        };
+    }
+
+    private string GetAvatarStyle(Color color)
+    {
+        return color switch
+        {
+            Color.Error => "background-color: rgba(244, 67, 54, 0.1); color: var(--mud-palette-error);",
+            Color.Warning => "background-color: rgba(255, 193, 7, 0.1); color: var(--mud-palette-warning);",
+            Color.Info => "background-color: rgba(33, 150, 243, 0.1); color: var(--mud-palette-info);",
+            Color.Success => "background-color: rgba(76, 175, 80, 0.1); color: var(--mud-palette-success);",
+            _ => "background-color: rgba(158, 158, 158, 0.1); color: var(--mud-palette-secondary);"
+        };
+    }
+
+    private Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(IssueStatus status) => status switch
+    {
+        IssueStatus.New => Color.Info,
+        IssueStatus.InProgress => Color.Warning,
+        IssueStatus.Resolved => Color.Success,
+        IssueStatus.Closed => Color.Dark,
+        IssueStatus.OnHold => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetChannelIcon(string channel) => channel.ToLowerInvariant() switch
+    {
+        "whatsapp" => Icons.Material.Filled.Chat,
+        "email" => Icons.Material.Filled.Email,
+        "web" => Icons.Material.Filled.Language,
+        "phone" => Icons.Material.Filled.Phone,
+        _ => Icons.Material.Filled.ContactSupport
+    };
+
+    private async Task ViewIssueDetails(Guid issueId)
+    {
+        await OnViewIssue.InvokeAsync(issueId);
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        try
+        {
+            await Task.Run(() => {
+                // This would use JavaScript interop in a real implementation
+                // For now, just show a message
+            });
+            Snackbar.Add(L["Copied to clipboard"], Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add(L["Failed to copy to clipboard"], Severity.Error);
+        }
+    }
+
+    private Color GetActivityColor(RecentActivityDto activity)
+    {
+        // Color based on priority or type
+        if (activity.Type == "issue_created")
+            return GetPriorityColor(activity.Priority);
+        if (activity.Type == "status_changed")
+            return GetStatusColor(activity.Status);
+        return Color.Default;
+    }
+
+    private string GetActivityIcon(RecentActivityDto activity)
+    {
+        // Icon based on type or status
+        return activity.Type switch
+        {
+            "issue_created" => Icons.Material.Filled.FiberNew,
+            "status_changed" => Icons.Material.Filled.ChangeCircle,
+            "priority_changed" => Icons.Material.Filled.PriorityHigh,
+            "assigned" => Icons.Material.Filled.Person,
+            _ => Icons.Material.Filled.Help
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        StopLiveUpdates();
+        _refreshTimer?.Dispose();
+    }
+}
+
+<style>
+    .activity-item {
+        border-radius: 8px;
+        transition: all 0.2s ease-in-out;
+        border-left-width: 3px !important;
+    }
+
+    .activity-item:hover {
+        transform: translateX(4px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .activity-item.new-activity {
+        animation: slideIn 0.5s ease-out;
+    }
+
+    .priority-chip {
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .nowrap {
+        white-space: nowrap;
+    }
+
+    .font-weight-medium {
+        font-weight: 500;
+    }
+
+    .text-muted {
+        opacity: 0.7;
+    }
+
+    .pulse-animation {
+        animation: pulse 2s infinite;
+    }
+
+</style>

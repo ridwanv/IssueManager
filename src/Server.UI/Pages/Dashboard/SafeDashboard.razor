@@ -1,0 +1,158 @@
+@page "/safe-dashboard"
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetDashboardMetrics
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using CleanArchitecture.Blazor.Domain.Enums
+@using DashboardFiltersModel = CleanArchitecture.Blazor.Server.UI.Models.DashboardFiltersModel
+
+@inject IStringLocalizer<Dashboard> L
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+
+<PageTitle>@Title</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudStack Spacing="4">
+        
+        <!-- Always Show Header - NO CONDITIONS -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+                <MudIcon Icon="@Icons.Material.Filled.Dashboard" Color="Color.Primary" Size="Size.Large" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h4" Class="font-weight-bold">SAFE DASHBOARD HEADER</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        Testing dashboard rendering with error handling
+                    </MudText>
+                </MudStack>
+            </MudStack>
+            
+            <MudButton Variant="Variant.Outlined" 
+                      Color="Color.Primary"
+                      StartIcon="@Icons.Material.Filled.Refresh"
+                      OnClick="LoadData"
+                      Disabled="@_loading"
+                      Size="Size.Small">
+                @(_loading ? "Loading..." : "Refresh")
+            </MudButton>
+        </MudStack>
+
+        <!-- Error Display -->
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                <MudText><strong>Error:</strong> @_error</MudText>
+            </MudAlert>
+        }
+
+        <!-- Loading Display -->
+        @if (_loading && _dashboardMetrics == null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+                    <MudText>Loading dashboard data...</MudText>
+                </MudStack>
+            </MudPaper>
+        }
+
+        <!-- Success Display -->
+        @if (_dashboardMetrics != null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Dashboard Metrics Loaded Successfully!</MudText>
+                <MudGrid>
+                    <MudItem xs="3">
+                        <MudPaper Class="pa-3 text-center" Style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                            <MudText Typo="Typo.h4">@_dashboardMetrics.TotalOpenIssues</MudText>
+                            <MudText Typo="Typo.body2">Open Issues</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="3">
+                        <MudPaper Class="pa-3 text-center" Style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); color: #333;">
+                            <MudText Typo="Typo.h4" Color="Color.Error">@_dashboardMetrics.CriticalIssues</MudText>
+                            <MudText Typo="Typo.body2">Critical Issues</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="3">
+                        <MudPaper Class="pa-3 text-center" Style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+                            <MudText Typo="Typo.h4">@_dashboardMetrics.AverageResolutionTimeFormatted</MudText>
+                            <MudText Typo="Typo.body2">Avg Resolution</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="3">
+                        <MudPaper Class="pa-3 text-center" Style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                            <MudText Typo="Typo.h4">@_dashboardMetrics.SlaComplianceFormatted</MudText>
+                            <MudText Typo="Typo.body2">SLA Compliance</MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+
+        <!-- Debug Info -->
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6">Debug Information</MudText>
+            <MudText>Component Initialized: @_initialized</MudText>
+            <MudText>Loading: @_loading</MudText>
+            <MudText>Data Loaded: @(_dashboardMetrics != null)</MudText>
+            <MudText>Last Load Attempt: @_lastLoadAttempt</MudText>
+        </MudPaper>
+    </MudStack>
+</MudContainer>
+
+@code {
+    public string Title { get; set; } = "Safe Dashboard";
+    
+    private DashboardMetricsDto? _dashboardMetrics;
+    private bool _loading = false;
+    private string _error = "";
+    private bool _initialized = false;
+    private string _lastLoadAttempt = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _initialized = true;
+            Title = "Safe Dashboard Test";
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            _error = $"OnInitializedAsync failed: {ex.Message}";
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _loading = true;
+            _error = "";
+            _lastLoadAttempt = DateTime.Now.ToString("HH:mm:ss");
+            StateHasChanged();
+
+            // Load dashboard metrics with explicit error handling
+            var metricsQuery = new GetDashboardMetricsQuery();
+            var metricsResult = await Mediator.Send(metricsQuery);
+            
+            if (metricsResult.Succeeded && metricsResult.Data != null)
+            {
+                _dashboardMetrics = metricsResult.Data;
+                _error = "";
+            }
+            else
+            {
+                _error = $"Query failed: Succeeded={metricsResult.Succeeded}, Data={metricsResult.Data != null}, Errors={string.Join(", ", metricsResult.Errors ?? new string[0])}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Exception in LoadData: {ex.Message} | Stack: {ex.StackTrace?.Substring(0, Math.Min(200, ex.StackTrace.Length))}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+}

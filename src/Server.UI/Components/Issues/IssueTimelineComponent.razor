@@ -1,0 +1,234 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Domain.Enums
+@using System.Text.Json
+@inject IStringLocalizer<SharedResource> L
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6" Class="mb-3">@L["Timeline"]</MudText>
+    
+    @if (TimelineEvents?.Any() == true)
+    {
+        <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+            @foreach (var timelineEvent in TimelineEvents.OrderByDescending(e => e.Timestamp))
+            {
+                <MudTimelineItem Color="@GetEventColor(timelineEvent.Type)" 
+                                 Icon="@GetEventIcon(timelineEvent.Type)"
+                                 Variant="Variant.Filled" 
+                                 Size="Size.Small">
+                    <ItemOpposite>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @timelineEvent.Timestamp.ToString("MMM dd, yyyy HH:mm")
+                        </MudText>
+                    </ItemOpposite>
+                    <ItemContent>
+                        <MudCard Elevation="1" Class="timeline-event-card">
+                            <MudCardHeader Class="pb-2">
+                                <CardHeaderContent>
+                                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudText Typo="Typo.subtitle2">
+                                            @timelineEvent.UserName
+                                        </MudText>
+                                        <MudChip T="string" 
+                                                 Size="Size.Small" 
+                                                 Color="@GetEventColor(timelineEvent.Type)" 
+                                                 Variant="Variant.Text">
+                                            @GetEventDisplayName(timelineEvent.Type)
+                                        </MudChip>
+                                    </MudStack>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent Class="pt-0">
+                                <MudText Typo="Typo.body2">
+                                    @GetEventDescription(timelineEvent)
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(timelineEvent.Details))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                        @timelineEvent.Details
+                                    </MudText>
+                                }
+                            </MudCardContent>
+                        </MudCard>
+                    </ItemContent>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-2">
+            @L["No timeline events available for this issue."]
+        </MudAlert>
+    }
+</MudPaper>
+
+<style>
+    .timeline-event-card {
+        min-width: 300px;
+    }
+    
+    .timeline-event-card .mud-card-header {
+        padding-bottom: 8px;
+    }
+    
+    .timeline-event-card .mud-card-content {
+        padding-top: 0;
+    }
+</style>
+
+@code {
+    [Parameter] public List<TimelineEventDto>? TimelineEvents { get; set; }
+    
+    private Color GetEventColor(string eventType) => eventType?.ToLowerInvariant() switch
+    {
+        "created" => Color.Success,
+        "status_changed" => Color.Primary,
+        "priority_changed" => Color.Warning, 
+        "assigned" => Color.Info,
+        "unassigned" => Color.Secondary,
+        "note_added" => Color.Default,
+        "attachment_added" => Color.Tertiary,
+        "comment_added" => Color.Default,
+        _ => Color.Default
+    };
+    
+    private string GetEventIcon(string eventType) => eventType?.ToLowerInvariant() switch
+    {
+        "created" => Icons.Material.Filled.Add,
+        "status_changed" => Icons.Material.Filled.ChangeCircle,
+        "priority_changed" => Icons.Material.Filled.PriorityHigh,
+        "assigned" => Icons.Material.Filled.Person,
+        "unassigned" => Icons.Material.Filled.PersonOff,
+        "note_added" => Icons.Material.Filled.Note,
+        "attachment_added" => Icons.Material.Filled.AttachFile,
+        "comment_added" => Icons.Material.Filled.Comment,
+        _ => Icons.Material.Filled.Event
+    };
+    
+    private string GetEventDisplayName(string eventType) => eventType?.ToLowerInvariant() switch
+    {
+        "created" => L["Created"],
+        "status_changed" => L["Status Changed"],
+        "priority_changed" => L["Priority Changed"],
+        "assigned" => L["Assigned"],
+        "unassigned" => L["Unassigned"],
+        "note_added" => L["Note Added"],
+        "attachment_added" => L["Attachment Added"],
+        "comment_added" => L["Comment Added"],
+        _ => L["Event"]
+    };
+    
+    private string GetEventDescription(TimelineEventDto timelineEvent)
+    {
+        try
+        {
+            return timelineEvent.Type?.ToLowerInvariant() switch
+            {
+                "created" => L["Issue was created"],
+                "status_changed" => GetStatusChangeDescription(timelineEvent.Payload),
+                "priority_changed" => GetPriorityChangeDescription(timelineEvent.Payload),
+                "assigned" => GetAssignmentDescription(timelineEvent.Payload),
+                "unassigned" => L["Issue was unassigned"],
+                "note_added" => L["Internal note was added"],
+                "attachment_added" => L["Attachment was added"],
+                "comment_added" => L["Comment was added"],
+                _ => timelineEvent.Description ?? L["Event occurred"]
+            };
+        }
+        catch
+        {
+            return timelineEvent.Description ?? L["Event occurred"];
+        }
+    }
+    
+    private string GetStatusChangeDescription(string payload)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(payload)) return L["Status was changed"];
+            
+            var data = JsonSerializer.Deserialize<StatusChangePayload>(payload);
+            if (data != null)
+            {
+                var fromStatus = data.OldStatus ?? data.FromStatus;
+                var toStatus = data.NewStatus ?? data.ToStatus;
+                return $"{L["Status changed from"]} {fromStatus} {L["to"]} {toStatus}";
+            }
+        }
+        catch { }
+        
+        return L["Status was changed"];
+    }
+    
+    private string GetPriorityChangeDescription(string payload)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(payload)) return L["Priority was changed"];
+            
+            var data = JsonSerializer.Deserialize<PriorityChangePayload>(payload);
+            if (data != null)
+            {
+                var fromPriority = data.OldPriority ?? data.FromPriority;
+                var toPriority = data.NewPriority ?? data.ToPriority;
+                return $"{L["Priority changed from"]} {fromPriority} {L["to"]} {toPriority}";
+            }
+        }
+        catch { }
+        
+        return L["Priority was changed"];
+    }
+    
+    private string GetAssignmentDescription(string payload)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(payload)) return L["Issue was assigned"];
+            
+            var data = JsonSerializer.Deserialize<AssignmentPayload>(payload);
+            if (data != null)
+            {
+                var userId = data.NewAssignedUserId ?? data.AssignedUserId;
+                var userName = data.AssignedUserName ?? userId ?? L["Unknown User"];
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return L["Issue was unassigned"];
+                }
+                else
+                {
+                    return $"{L["Assigned to"]} {userName}";
+                }
+            }
+        }
+        catch { }
+        
+        return L["Issue was assigned"];
+    }
+    
+    private class StatusChangePayload
+    {
+        public string? OldStatus { get; set; }
+        public string? NewStatus { get; set; }
+        public string? FromStatus { get; set; }  // Alternative name
+        public string? ToStatus { get; set; }    // Alternative name
+    }
+    
+    private class PriorityChangePayload
+    {
+        public string? OldPriority { get; set; }
+        public string? NewPriority { get; set; }
+        public string? FromPriority { get; set; }  // Alternative name
+        public string? ToPriority { get; set; }    // Alternative name
+    }
+    
+    private class AssignmentPayload
+    {
+        public string? OldAssignedUserId { get; set; }
+        public string? NewAssignedUserId { get; set; }
+        public string? AssignedUserId { get; set; }
+        public string? AssignedUserName { get; set; }
+        public string? FromUserId { get; set; }
+        public string? FromUserName { get; set; }
+    }
+}

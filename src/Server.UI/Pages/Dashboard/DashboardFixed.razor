@@ -1,0 +1,343 @@
+@page "/dashboard-fixed"
+@using CleanArchitecture.Blazor.Server.UI.Pages.Dashboard.Components
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetDashboardMetrics
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetRecentActivity  
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using CleanArchitecture.Blazor.Server.UI.Components.Security
+@using CleanArchitecture.Blazor.Domain.Enums
+@using DashboardFiltersModel = CleanArchitecture.Blazor.Server.UI.Models.DashboardFiltersModel
+@implements IAsyncDisposable
+
+@inject IStringLocalizer<Dashboard> L
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+
+<PageTitle>@Title</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudStack Spacing="4">
+        <!-- Dashboard Header - ALWAYS VISIBLE -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+                <MudIcon Icon="@Icons.Material.Filled.Dashboard" Color="Color.Primary" Size="Size.Large" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h4" Class="font-weight-bold">@L["Issue Management Dashboard"]</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        @L["Real-time overview of your issue management system"]
+                    </MudText>
+                </MudStack>
+            </MudStack>
+            
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                @if (_lastRefreshed.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Class="text-muted">
+                        @L["Updated: {0}", _lastRefreshed.Value.ToString("HH:mm:ss")]
+                    </MudText>
+                }
+                <MudButton Variant="Variant.Outlined" 
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Refresh"
+                          OnClick="RefreshDashboard"
+                          Disabled="@_loading"
+                          Size="Size.Small">
+                    @(_loading ? L["Refreshing..."] : L["Refresh"])
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        <!-- Error Display -->
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                <MudText><strong>Error:</strong> @_errorMessage</MudText>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="RetryLoad">Retry</MudButton>
+            </MudAlert>
+        }
+
+        <!-- Dashboard Filters -->
+        @try
+        {
+            <DashboardFilters Filters="_filters" 
+                             FiltersChanged="OnFiltersChanged"
+                             AutoRefreshChanged="OnAutoRefreshChanged" />
+        }
+        catch (Exception ex)
+        {
+            <MudAlert Severity="Severity.Warning">
+                Dashboard filters failed to load: @ex.Message
+            </MudAlert>
+        }
+
+        <!-- Loading State -->
+        @if (_loading && _dashboardMetrics == null)
+        {
+            <MudStack Spacing="3">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="400px" />
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="300px" />
+            </MudStack>
+        }
+        else
+        {
+            <!-- KPI Metrics Cards -->
+            @try
+            {
+                <IssueMetricsCard Metrics="_dashboardMetrics" />
+            }
+            catch (Exception ex)
+            {
+                <MudAlert Severity="Severity.Warning">
+                    Metrics card failed to load: @ex.Message
+                </MudAlert>
+            }
+
+            <!-- Main Dashboard Grid -->
+            <MudGrid>
+                <!-- Left Column -->
+                <MudItem xs="12" lg="4">
+                    <MudStack Spacing="3">
+                        @try
+                        {
+                            <IssueStatusBoard Metrics="_dashboardMetrics" OnRefreshClick="RefreshDashboard" />
+                        }
+                        catch (Exception ex)
+                        {
+                            <MudAlert Severity="Severity.Warning">Status board failed: @ex.Message</MudAlert>
+                        }
+
+                        @try
+                        {
+                            <SecurityRiskDashboard />
+                        }
+                        catch (Exception ex)
+                        {
+                            <MudAlert Severity="Severity.Warning">Security dashboard failed: @ex.Message</MudAlert>
+                        }
+                    </MudStack>
+                </MudItem>
+
+                <!-- Center Column -->
+                <MudItem xs="12" lg="5">
+                    <MudStack Spacing="3">
+                        @try
+                        {
+                            <PerformanceCharts PerformanceStats="_performanceStats" OnRefreshClick="RefreshDashboard" />
+                        }
+                        catch (Exception ex)
+                        {
+                            <MudAlert Severity="Severity.Warning">Performance charts failed: @ex.Message</MudAlert>
+                        }
+                    </MudStack>
+                </MudItem>
+
+                <!-- Right Column -->
+                <MudItem xs="12" lg="3">
+                    @try
+                    {
+                        <RealTimeActivityFeed OnViewIssue="ViewIssueDetails" />
+                    }
+                    catch (Exception ex)
+                    {
+                        <MudAlert Severity="Severity.Warning">Activity feed failed: @ex.Message</MudAlert>
+                    }
+                </MudItem>
+            </MudGrid>
+        }
+
+        <!-- Debug Info -->
+        <MudExpansionPanels>
+            <MudExpansionPanel IsInitiallyExpanded="false">
+                <TitleContent>
+                    <div style="display: flex;">
+                        <MudIcon Icon="@Icons.Material.Filled.BugReport" class="mr-3"></MudIcon>
+                        <MudText>Debug Information</MudText>
+                    </div>
+                </TitleContent>
+                <ChildContent>
+                    <MudText>Component State: @_componentState</MudText>
+                    <MudText>Loading: @_loading</MudText>
+                    <MudText>Metrics Loaded: @(_dashboardMetrics != null)</MudText>
+                    <MudText>Performance Stats Loaded: @(_performanceStats != null)</MudText>
+                    <MudText>Last Refresh: @_lastRefreshed</MudText>
+                    <MudText>Auto Refresh: @_filters.AutoRefresh</MudText>
+                    <MudText>Error: @_errorMessage</MudText>
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </MudStack>
+</MudContainer>
+
+@code {
+    public string Title { get; set; } = "Dashboard";
+
+    private DashboardMetricsDto? _dashboardMetrics;
+    private PerformanceStatsDto? _performanceStats;
+    private DashboardFiltersModel _filters = new();
+    private bool _loading = false;
+    private DateTime? _lastRefreshed;
+    private Timer? _refreshTimer;
+    private readonly int _refreshIntervalMs = 30000;
+    private string _errorMessage = "";
+    private string _componentState = "Initializing";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _componentState = "OnInitializedAsync Started";
+            Title = L["Issue Management Dashboard"];
+            _componentState = "Title Set";
+            
+            // Load data safely
+            await SafeLoadDashboardData();
+            _componentState = "Data Loading Attempted";
+            
+            // Start auto refresh only if no errors
+            if (string.IsNullOrEmpty(_errorMessage))
+            {
+                StartAutoRefresh();
+                _componentState = "Auto Refresh Started";
+            }
+            else
+            {
+                _componentState = "Auto Refresh Skipped Due To Error";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"OnInitializedAsync failed: {ex.Message}";
+            _componentState = $"OnInitializedAsync Failed: {ex.Message}";
+        }
+    }
+
+    private async Task SafeLoadDashboardData()
+    {
+        try
+        {
+            _loading = true;
+            _errorMessage = "";
+            StateHasChanged();
+
+            // Load dashboard metrics
+            var metricsQuery = new GetDashboardMetricsQuery();
+            var metricsResult = await Mediator.Send(metricsQuery);
+            if (metricsResult.Succeeded)
+            {
+                _dashboardMetrics = metricsResult.Data;
+            }
+            else
+            {
+                _errorMessage += $"Metrics failed: {string.Join(", ", metricsResult.Errors)} ";
+            }
+
+            // Load performance stats  
+            var statsQuery = new GetPerformanceStatsQuery(GetDaysFromTimeRange(_filters.TimeRange));
+            var statsResult = await Mediator.Send(statsQuery);
+            if (statsResult.Succeeded)
+            {
+                _performanceStats = statsResult.Data;
+            }
+            else
+            {
+                _errorMessage += $"Stats failed: {string.Join(", ", statsResult.Errors)} ";
+            }
+
+            _lastRefreshed = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Data loading exception: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshDashboard()
+    {
+        await SafeLoadDashboardData();
+    }
+
+    private async Task RetryLoad()
+    {
+        await SafeLoadDashboardData();
+    }
+
+    private async Task OnFiltersChanged(DashboardFiltersModel newFilters)
+    {
+        _filters = newFilters;
+        await SafeLoadDashboardData();
+    }
+
+    private void OnAutoRefreshChanged(bool autoRefresh)
+    {
+        _filters.AutoRefresh = autoRefresh;
+        if (autoRefresh)
+        {
+            StartAutoRefresh();
+        }
+        else
+        {
+            StopAutoRefresh();
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        try
+        {
+            if (!_filters.AutoRefresh) return;
+
+            _refreshTimer?.Dispose();
+            _refreshTimer = new Timer(async _ =>
+            {
+                try
+                {
+                    await InvokeAsync(SafeLoadDashboardData);
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but don't crash the timer
+                    _errorMessage = $"Auto-refresh failed: {ex.Message}";
+                }
+            }, null, _refreshIntervalMs, _refreshIntervalMs);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Auto-refresh setup failed: {ex.Message}";
+        }
+    }
+
+    private void StopAutoRefresh()
+    {
+        _refreshTimer?.Dispose();
+        _refreshTimer = null;
+    }
+
+    private Task ViewIssueDetails(Guid issueId)
+    {
+        Snackbar.Add($"Navigating to issue {issueId}", Severity.Info);
+        return Task.CompletedTask;
+    }
+
+    private int GetDaysFromTimeRange(string timeRange) => timeRange switch
+    {
+        "7d" => 7,
+        "30d" => 30,
+        "90d" => 90,
+        "today" => 1,
+        "yesterday" => 2,
+        "this_week" => 7,
+        "last_week" => 14,
+        _ => 30
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        StopAutoRefresh();
+        _refreshTimer?.Dispose();
+    }
+}

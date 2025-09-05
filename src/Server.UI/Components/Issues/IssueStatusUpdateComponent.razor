@@ -1,0 +1,122 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Commands.UpdateIssueStatus
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Application.Common.Security
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IPermissionService PermissionService
+@inject IStringLocalizer<SharedResource> L
+
+<div class="d-flex align-center gap-2">
+    <MudText Typo="Typo.subtitle2">@L["Status"]:</MudText>
+    @if (_canEdit)
+    {
+        <MudSelect T="IssueStatus" 
+                   Value="@CurrentStatus" 
+                   ValueChanged="@OnStatusChanged"
+                   Variant="Variant.Outlined" 
+                   Margin="Margin.Dense"
+                   Disabled="_updating"
+                   Class="flex-grow-1">
+            @foreach (var status in GetAvailableStatuses())
+            {
+                <MudSelectItem Value="@status">
+                    <div class="d-flex align-center gap-2">
+                        <IssueStatusBadge Status="status" />
+                        <span>@status.ToString()</span>
+                    </div>
+                </MudSelectItem>
+            }
+        </MudSelect>
+    }
+    else
+    {
+        <IssueStatusBadge Status="CurrentStatus" />
+    }
+    
+    @if (_updating)
+    {
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+    }
+</div>
+
+@code {
+    [Parameter] public Guid IssueId { get; set; }
+    [Parameter] public IssueStatus CurrentStatus { get; set; }
+    [Parameter] public EventCallback<IssueStatus> OnStatusUpdated { get; set; }
+
+    private bool _canEdit;
+    private bool _updating;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canEdit = await PermissionService.HasPermissionAsync(Permissions.Issues.Edit);
+    }
+
+    private async Task OnStatusChanged(IssueStatus newStatus)
+    {
+        if (newStatus == CurrentStatus || _updating) return;
+
+        if (!IsValidStatusTransition(CurrentStatus, newStatus))
+        {
+            Snackbar.Add(L["Invalid status transition"], Severity.Warning);
+            return;
+        }
+
+        _updating = true;
+        try
+        {
+            var command = new UpdateIssueStatusCommand
+            {
+                IssueId = IssueId,
+                NewStatus = newStatus
+            };
+
+            var result = await Mediator.Send(command);
+            
+            if (result.Succeeded)
+            {
+                CurrentStatus = newStatus;
+                Snackbar.Add(L["Status updated successfully"], Severity.Success);
+                await OnStatusUpdated.InvokeAsync(newStatus);
+            }
+            else
+            {
+                Snackbar.Add(result.Errors.FirstOrDefault() ?? L["Failed to update status"], Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error updating status"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _updating = false;
+        }
+    }
+
+    private IEnumerable<IssueStatus> GetAvailableStatuses()
+    {
+        // Define valid workflow transitions
+        return CurrentStatus switch
+        {
+            IssueStatus.New => new[] { IssueStatus.New, IssueStatus.InProgress, IssueStatus.Resolved, IssueStatus.Closed },
+            IssueStatus.InProgress => new[] { IssueStatus.InProgress, IssueStatus.Resolved, IssueStatus.Closed },
+            IssueStatus.Resolved => new[] { IssueStatus.Resolved, IssueStatus.Closed, IssueStatus.InProgress }, // Allow reopening
+            IssueStatus.Closed => new[] { IssueStatus.Closed, IssueStatus.InProgress }, // Allow reopening
+            _ => Enum.GetValues<IssueStatus>()
+        };
+    }
+
+    private static bool IsValidStatusTransition(IssueStatus fromStatus, IssueStatus toStatus)
+    {
+        // Workflow validation rules
+        return fromStatus switch
+        {
+            IssueStatus.New => true, // Can transition to any status
+            IssueStatus.InProgress => toStatus != IssueStatus.New,
+            IssueStatus.Resolved => toStatus is IssueStatus.Closed or IssueStatus.InProgress,
+            IssueStatus.Closed => toStatus == IssueStatus.InProgress, // Only allow reopening
+            _ => false
+        };
+    }
+}

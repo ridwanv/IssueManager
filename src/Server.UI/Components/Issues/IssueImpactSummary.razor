@@ -1,0 +1,179 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Domain.Enums
+@inject IStringLocalizer<SharedResource> L
+
+<MudExpansionPanels Elevation="0">
+    <MudExpansionPanel IsInitiallyExpanded="false">
+        <TitleContent>
+            <div class="d-flex align-center">
+                <MudIcon Icon="Icons.Material.Filled.Group" Size="Size.Small" Class="mr-2" />
+                <MudText Typo="Typo.subtitle2">
+                    @L["Impact Summary"] (@Impact.AffectedUserCount @L["users affected"])
+                </MudText>
+            </div>
+        </TitleContent>
+        <ChildContent>
+            <MudGrid>
+                <!-- Timeline -->
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Timeline"]</MudText>
+                    <div class="d-flex align-center gap-2 mb-2">
+                        <MudIcon Icon="Icons.Material.Filled.Schedule" Size="Size.Small" Color="Color.Secondary" />
+                        <MudText Typo="Typo.body2">
+                            @L["First reported"]: @Impact.EarliestReported?.ToString("MMM dd, yyyy HH:mm")
+                        </MudText>
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Secondary" />
+                        <MudText Typo="Typo.body2">
+                            @L["Latest report"]: @Impact.LatestReported?.ToString("MMM dd, yyyy HH:mm")
+                        </MudText>
+                    </div>
+                </MudItem>
+
+                <!-- Priority & Status Breakdown -->
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Breakdown"]</MudText>
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        @foreach (var priority in Impact.PriorityBreakdown)
+                        {
+                            <MudChip T="string" 
+                                     Size="Size.Small" 
+                                     Color="@GetPriorityColor(priority.Key)"
+                                     Variant="Variant.Text">
+                                @priority.Key: @priority.Value
+                            </MudChip>
+                        }
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        @foreach (var status in Impact.StatusBreakdown)
+                        {
+                            <MudChip T="string" 
+                                     Size="Size.Small" 
+                                     Color="@GetStatusColor(status.Key)"
+                                     Variant="Variant.Text">
+                                @status.Key: @status.Value
+                            </MudChip>
+                        }
+                    </div>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Affected Users List -->
+            @if (Impact.AffectedUsers.Any())
+            {
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Affected Users"]</MudText>
+                
+                @if (Impact.AffectedUsers.Count <= 5)
+                {
+                    <!-- Show all users if 5 or fewer -->
+                    @foreach (var user in Impact.AffectedUsers.OrderBy(u => u.ReportedAt))
+                    {
+                        @AffectedUserCard(user)
+                    }
+                }
+                else
+                {
+                    <!-- Show first 3 users and expandable section for the rest -->
+                    @foreach (var user in Impact.AffectedUsers.Take(3).OrderBy(u => u.ReportedAt))
+                    {
+                        @AffectedUserCard(user)
+                    }
+                    
+                    <MudExpansionPanels Elevation="0" Class="mt-2">
+                        <MudExpansionPanel IsInitiallyExpanded="false">
+                            <TitleContent>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    @L["Show {0} more users", Impact.AffectedUsers.Count - 3]
+                                </MudText>
+                            </TitleContent>
+                            <ChildContent>
+                                @foreach (var user in Impact.AffectedUsers.Skip(3).OrderBy(u => u.ReportedAt))
+                                {
+                                    @AffectedUserCard(user)
+                                }
+                            </ChildContent>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+            }
+        </ChildContent>
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@code {
+    [Parameter, EditorRequired] public IssueImpactSummaryDto Impact { get; set; } = default!;
+
+    private static Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+
+    private static Color GetStatusColor(IssueStatus status) => status switch
+    {
+        IssueStatus.New => Color.Info,
+        IssueStatus.InProgress => Color.Warning,
+        IssueStatus.Resolved => Color.Success,
+        IssueStatus.Closed => Color.Secondary,
+        IssueStatus.OnHold => Color.Default,
+        _ => Color.Default
+    };
+}
+
+@code {
+    private RenderFragment<AffectedUserDto> AffectedUserCard => user => __builder =>
+    {
+        <MudCard Elevation="1" Class="mb-2">
+            <MudCardContent Class="py-2">
+                <div class="d-flex align-center justify-space-between">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-center gap-2 mb-1">
+                            <MudIcon Icon="Icons.Material.Filled.Person" Size="Size.Small" Color="Color.Secondary" />
+                            <MudText Typo="Typo.subtitle2">
+                                @(user.ContactName ?? L["Unknown User"])
+                            </MudText>
+                            @if (!string.IsNullOrEmpty(user.ContactPhone))
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                    @user.ContactPhone
+                                </MudChip>
+                            }
+                        </div>
+                        <MudText Typo="Typo.body2" Class="ml-6">
+                            <MudLink Href="@($"/issues/{user.IssueId}")" Color="Color.Primary">
+                                #{user.IssueReference}
+                            </MudLink>
+                            - @TruncateDescription(user.IssueDescription)
+                        </MudText>
+                    </div>
+                    <div class="d-flex flex-column align-end gap-1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @user.ReportedAt.ToString("MMM dd, HH:mm")
+                        </MudText>
+                        <div class="d-flex gap-1">
+                            <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(user.Priority)" Variant="Variant.Text">
+                                @user.Priority.ToString()[0]
+                            </MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(user.Status)" Variant="Variant.Text">
+                                @user.Status.ToString()[0]
+                            </MudChip>
+                        </div>
+                    </div>
+                </div>
+            </MudCardContent>
+        </MudCard>
+    };
+
+    private string TruncateDescription(string description)
+    {
+        const int maxLength = 100;
+        return description.Length <= maxLength 
+            ? description 
+            : description[..maxLength] + "...";
+    }
+}

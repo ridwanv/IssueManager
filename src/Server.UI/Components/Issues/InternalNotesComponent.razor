@@ -1,0 +1,158 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Commands.AddInternalNote
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Application.Common.Security
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IPermissionService PermissionService
+@inject IStringLocalizer<SharedResource> L
+
+<MudCard Class="mb-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">@L["Internal Notes"]</MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    
+    <MudCardContent>
+        @if (_canAdd)
+        {
+            <MudExpansionPanels MultiExpansion="false" Class="mb-4">
+                <MudExpansionPanel Text="@L["Add Internal Note"]">
+                    <div class="d-flex flex-column gap-3">
+                        <MudTextField @bind-Value="_newNoteContent"
+                                      Label="@L["Note Content"]"
+                                      Variant="Variant.Outlined"
+                                      Lines="3"
+                                      MaxLength="1000"
+                                      Counter="1000"
+                                      Placeholder="@L["Add internal note for team communication..."]"
+                                      Disabled="_addingNote" />
+                        
+                        <div class="d-flex justify-end gap-2">
+                            <MudButton Variant="Variant.Text" 
+                                       OnClick="ClearNote"
+                                       Disabled="_addingNote">
+                                @L["Clear"]
+                            </MudButton>
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Primary"
+                                       OnClick="AddNote"
+                                       Disabled="string.IsNullOrWhiteSpace(_newNoteContent) || _addingNote"
+                                       StartIcon="@Icons.Material.Filled.Add">
+                                @if (_addingNote)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                }
+                                else
+                                {
+                                    @L["Add Note"]
+                                }
+                            </MudButton>
+                        </div>
+                    </div>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
+        @if (InternalNotes?.Any() == true)
+        {
+            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                @foreach (var note in InternalNotes.OrderByDescending(n => n.CreatedAt))
+                {
+                    <MudTimelineItem Color="Color.Info" Variant="Variant.Filled" Size="Size.Small">
+                        <ItemOpposite>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                @note.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                            </MudText>
+                        </ItemOpposite>
+                        <ItemContent>
+                            <MudCard Elevation="1">
+                                <MudCardHeader Class="pb-2">
+                                    <CardHeaderContent>
+                                        <MudText Typo="Typo.subtitle2">
+                                            @note.CreatedByUserName
+                                        </MudText>
+                                    </CardHeaderContent>
+                                </MudCardHeader>
+                                <MudCardContent Class="pt-0">
+                                    <MudText Typo="Typo.body2">
+                                        @note.Content
+                                    </MudText>
+                                </MudCardContent>
+                            </MudCard>
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        }
+        else
+        {
+            <div class="text-center py-4">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @L["No internal notes yet"]
+                </MudText>
+            </div>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public Guid IssueId { get; set; }
+    [Parameter] public IEnumerable<InternalNoteDto>? InternalNotes { get; set; }
+    [Parameter] public EventCallback<InternalNoteDto> OnNoteAdded { get; set; }
+
+    private bool _canAdd;
+    private bool _addingNote;
+    private string _newNoteContent = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canAdd = await PermissionService.HasPermissionAsync(Permissions.Issues.Edit);
+    }
+
+    private async Task AddNote()
+    {
+        if (string.IsNullOrWhiteSpace(_newNoteContent) || _addingNote) return;
+
+        _addingNote = true;
+        try
+        {
+            var command = new AddInternalNoteCommand
+            {
+                IssueId = IssueId,
+                Content = _newNoteContent.Trim()
+            };
+
+            var result = await Mediator.Send(command);
+            
+            if (result.Succeeded)
+            {
+                var newNote = result.Data;
+                Snackbar.Add(L["Internal note added successfully"], Severity.Success);
+                
+                // Clear the form
+                _newNoteContent = string.Empty;
+                
+                // Notify parent component
+                await OnNoteAdded.InvokeAsync(newNote);
+            }
+            else
+            {
+                Snackbar.Add(result.Errors.FirstOrDefault() ?? L["Failed to add internal note"], Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error adding internal note"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _addingNote = false;
+        }
+    }
+
+    private void ClearNote()
+    {
+        _newNoteContent = string.Empty;
+    }
+}

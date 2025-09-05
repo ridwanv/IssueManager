@@ -1,0 +1,166 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Commands.AssignIssue
+@using CleanArchitecture.Blazor.Application.Features.Identity.DTOs
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
+@using CleanArchitecture.Blazor.Server.UI.Components.Autocompletes
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IPermissionService PermissionService
+@inject IStringLocalizer<SharedResource> L
+@inject IUserContextAccessor UserContextAccessor
+
+<div class="d-flex align-center gap-2 mb-2">
+    <MudText Typo="Typo.subtitle2">@L["Assigned To"]:</MudText>
+    @if (_canEdit)
+    {
+        <div class="flex-grow-1">
+            <PickUserAutocomplete T="ApplicationUserDto" @bind-Value="_selectedUser"
+                                  @bind-Value:after="OnAssignmentChanged"
+                                  TenantId="@_currentTenantId"
+                                  Label="@L["Select Staff Member"]"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Disabled="_updating" />
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(AssignedUserName))
+    {
+        <MudChip T="string" 
+                 Icon="Icons.Material.Filled.Person" 
+                 Color="Color.Primary" 
+                 Variant="Variant.Filled" 
+                 Size="Size.Small">
+            @AssignedUserName
+        </MudChip>
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Not assigned"]</MudText>
+    }
+    
+    @if (_updating)
+    {
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+    }
+</div>
+
+@if (_canEdit && !string.IsNullOrEmpty(AssignedUserName))
+{
+    <div class="d-flex justify-end mb-2">
+        <MudButton Variant="Variant.Text" 
+                   Size="Size.Small" 
+                   Color="Color.Secondary"
+                   OnClick="OnUnassign"
+                   Disabled="_updating"
+                   StartIcon="Icons.Material.Filled.PersonRemove">
+            @L["Unassign"]
+        </MudButton>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid IssueId { get; set; }
+    [Parameter] public Guid? AssignedUserId { get; set; }
+    [Parameter] public string? AssignedUserName { get; set; }
+    [Parameter] public EventCallback<(Guid? UserId, string? UserName)> OnAssignmentUpdated { get; set; }
+
+    private bool _canEdit;
+    private bool _updating;
+    private ApplicationUserDto? _selectedUser;
+    private string? _currentTenantId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canEdit = await PermissionService.HasPermissionAsync(Permissions.Issues.Edit);
+        _currentTenantId = UserContextAccessor.Current?.TenantId;
+    }
+
+    protected override Task OnParametersSetAsync()
+    {
+        // Set the selected user based on the current assignment
+        if (AssignedUserId.HasValue && !string.IsNullOrEmpty(AssignedUserName))
+        {
+            _selectedUser = new ApplicationUserDto 
+            { 
+                Id = AssignedUserId.Value.ToString(), 
+                UserName = AssignedUserName,
+                TenantId = _currentTenantId
+            };
+        }
+        else
+        {
+            _selectedUser = null;
+        }
+        
+        return Task.CompletedTask;
+    }
+
+    private async Task OnAssignmentChanged()
+    {
+        if (_updating) return;
+
+        var newUserId = _selectedUser != null ? Guid.Parse(_selectedUser.Id) : (Guid?)null;
+        
+        // Don't update if the assignment hasn't changed
+        if (newUserId == AssignedUserId) return;
+
+        await UpdateAssignment(newUserId);
+    }
+
+    private async Task OnUnassign()
+    {
+        if (_updating) return;
+        await UpdateAssignment(null);
+    }
+
+    private async Task UpdateAssignment(Guid? newUserId)
+    {
+        _updating = true;
+        try
+        {
+            var command = new AssignIssueCommand
+            {
+                IssueId = IssueId,
+                AssignedUserId = newUserId?.ToString()
+            };
+
+            var result = await Mediator.Send(command);
+            
+            if (result.Succeeded)
+            {
+                var userName = _selectedUser?.UserName;
+                AssignedUserId = newUserId;
+                AssignedUserName = userName;
+
+                var message = newUserId.HasValue 
+                    ? string.Format(L["Issue assigned to {0}"], userName)
+                    : L["Issue unassigned"];
+                
+                Snackbar.Add(message, Severity.Success);
+                await OnAssignmentUpdated.InvokeAsync((newUserId, userName));
+            }
+            else
+            {
+                // Reset the selected user on failure
+                _selectedUser = AssignedUserId.HasValue && !string.IsNullOrEmpty(AssignedUserName)
+                    ? new ApplicationUserDto { Id = AssignedUserId.Value.ToString(), UserName = AssignedUserName }
+                    : null;
+                    
+                Snackbar.Add(result.Errors.FirstOrDefault() ?? L["Failed to update assignment"], Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Reset the selected user on error
+            _selectedUser = AssignedUserId.HasValue && !string.IsNullOrEmpty(AssignedUserName)
+                ? new ApplicationUserDto { Id = AssignedUserId.Value.ToString(), UserName = AssignedUserName }
+                : null;
+                
+            Snackbar.Add($"{L["Error updating assignment"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _updating = false;
+        }
+    }
+}

@@ -1,0 +1,118 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Commands.UpdateIssuePriority
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Application.Common.Security
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IPermissionService PermissionService
+@inject IStringLocalizer<SharedResource> L
+
+<div class="d-flex align-center gap-2">
+    <MudText Typo="Typo.subtitle2">@L["Priority"]:</MudText>
+    @if (_canEdit)
+    {
+        <MudSelect T="IssuePriority" 
+                   Value="@CurrentPriority" 
+                   ValueChanged="@OnPriorityChanged"
+                   Variant="Variant.Outlined" 
+                   Margin="Margin.Dense"
+                   Disabled="_updating"
+                   Class="flex-grow-1">
+            @foreach (var priority in Enum.GetValues<IssuePriority>())
+            {
+                <MudSelectItem Value="@priority">
+                    <div class="d-flex align-center gap-2">
+                        <MudChip T="string" 
+                                 Color="@GetPriorityColor(priority)" 
+                                 Variant="Variant.Filled" 
+                                 Size="Size.Small">
+                            @GetPriorityIcon(priority)
+                        </MudChip>
+                        <span>@priority.ToString()</span>
+                    </div>
+                </MudSelectItem>
+            }
+        </MudSelect>
+    }
+    else
+    {
+        <MudChip T="string" 
+                 Color="@GetPriorityColor(CurrentPriority)" 
+                 Variant="Variant.Filled" 
+                 Size="Size.Small">
+            @GetPriorityIcon(CurrentPriority) @CurrentPriority.ToString()
+        </MudChip>
+    }
+    
+    @if (_updating)
+    {
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+    }
+</div>
+
+@code {
+    [Parameter] public Guid IssueId { get; set; }
+    [Parameter] public IssuePriority CurrentPriority { get; set; }
+    [Parameter] public EventCallback<IssuePriority> OnPriorityUpdated { get; set; }
+
+    private bool _canEdit;
+    private bool _updating;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canEdit = await PermissionService.HasPermissionAsync(Permissions.Issues.Edit);
+    }
+
+    private async Task OnPriorityChanged(IssuePriority newPriority)
+    {
+        if (newPriority == CurrentPriority || _updating) return;
+
+        _updating = true;
+        try
+        {
+            var command = new UpdateIssuePriorityCommand
+            {
+                IssueId = IssueId,
+                NewPriority = newPriority
+            };
+
+            var result = await Mediator.Send(command);
+            
+            if (result.Succeeded)
+            {
+                CurrentPriority = newPriority;
+                Snackbar.Add(L["Priority updated successfully"], Severity.Success);
+                await OnPriorityUpdated.InvokeAsync(newPriority);
+            }
+            else
+            {
+                Snackbar.Add(result.Errors.FirstOrDefault() ?? L["Failed to update priority"], Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error updating priority"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _updating = false;
+        }
+    }
+
+    private static Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+
+    private static string GetPriorityIcon(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => "🔴",
+        IssuePriority.High => "🟠",
+        IssuePriority.Medium => "🟡",
+        IssuePriority.Low => "🟢",
+        _ => "⚪"
+    };
+}

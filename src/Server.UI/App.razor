@@ -11,6 +11,9 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <base href="/"/>
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet"/>
     <link href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" rel="stylesheet"/>
@@ -87,15 +90,111 @@
 
 <body>
     <Routes @rendermode="RenderModeForPage"/>
+    
+    <!-- Blazor Server reconnection UI -->
+    <div id="reconnect-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; color: white; text-align: center; padding-top: 20%;">
+        <div style="background: #333; padding: 20px; border-radius: 10px; display: inline-block; max-width: 400px;">
+            <h3>Connection Lost</h3>
+            <p id="reconnect-message">Attempting to reconnect...</p>
+            <div style="margin-top: 10px;">
+                <button onclick="location.reload(true)" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+                    Refresh Page
+                </button>
+            </div>
+        </div>
+    </div>
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script>
+        // Enhanced Blazor Server connection handling
+        (function() {
+            let connectionAttempts = 0;
+            const maxConnectionAttempts = 3;
+            let initialLoadTimeout;
+            
+            // Check if page loads within reasonable time
+            function checkInitialLoad() {
+                if (!window.Blazor || !window.Blazor._internal) {
+                    connectionAttempts++;
+                    console.log(`Initial connection attempt ${connectionAttempts} failed`);
+                    
+                    if (connectionAttempts >= maxConnectionAttempts) {
+                        console.log('Max initial connection attempts reached. Refreshing...');
+                        window.location.reload(true);
+                        return;
+                    }
+                    
+                    // Retry after delay
+                    setTimeout(checkInitialLoad, 2000);
+                } else {
+                    console.log('Blazor connection successful');
+                    clearTimeout(initialLoadTimeout);
+                }
+            }
+            
+            // Set initial load timeout
+            initialLoadTimeout = setTimeout(checkInitialLoad, 5000);
+            
+            // Enhanced reconnection configuration
+            window.Blazor = window.Blazor || {};
+            
+            // Override default reconnection behavior
+            const originalStart = window.Blazor.start;
+            window.Blazor.start = function(options) {
+                const enhancedOptions = {
+                    ...options,
+                    configureSignalR: function(builder) {
+                        builder
+                            .withUrl('/_blazor', {
+                                transport: 1 | 2, // WebSocket and ServerSentEvents
+                                skipNegotiation: false
+                            })
+                            .withAutomaticReconnect({
+                                nextRetryDelayInMilliseconds: function (previousRetryCount) {
+                                    // Progressive backoff: 0, 1s, 3s, 5s, 10s
+                                    const delays = [0, 1000, 3000, 5000, 10000];
+                                    return delays[previousRetryCount] || 15000;
+                                }
+                            });
+                        
+                        // Call original configureSignalR if provided
+                        if (options && options.configureSignalR) {
+                            options.configureSignalR(builder);
+                        }
+                    }
+                };
+                
+                if (originalStart) {
+                    return originalStart.call(this, enhancedOptions);
+                }
+            };
+            
+            // Listen for connection events
+            document.addEventListener('DOMContentLoaded', function() {
+                // Additional connection monitoring
+                let connectionCheckInterval = setInterval(function() {
+                    if (window.Blazor && window.Blazor._internal) {
+                        clearInterval(connectionCheckInterval);
+                        clearTimeout(initialLoadTimeout);
+                        console.log('Blazor fully initialized');
+                    }
+                }, 1000);
+                
+                // Clear interval after 30 seconds to prevent infinite checking
+                setTimeout(function() {
+                    clearInterval(connectionCheckInterval);
+                }, 30000);
+            });
+        })();
+    </script>
+    <script src="@Assets["js/boot.js"]"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </body>
 
 </html>
 
 @code {
-   private IComponentRenderMode? RenderModeForPage =>  new InteractiveServerRenderMode(false);
+   private IComponentRenderMode? RenderModeForPage => new InteractiveServerRenderMode(prerender: false);
 
     protected override Task OnInitializedAsync()
     {

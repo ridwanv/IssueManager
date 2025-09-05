@@ -4,8 +4,8 @@ using Microsoft.BotBuilderSamples;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
 using System.Text.Json;
-using MediatR;
-using CleanArchitecture.Blazor.Application.Features.Issues.Commands.Create;
+using IssueManager.Bot.Services;
+using IssueManager.Bot.Models;
 
 namespace Plugins;
 
@@ -13,14 +13,13 @@ public class IssueIntakePlugin
 {
     private ConversationData _conversationData;
     private ITurnContext _turnContext;
-    private IConfiguration _config;
-    private IMediator _mediator;
+    private IssueManagerApiClient _apiClient;
 
-    public IssueIntakePlugin(ConversationData conversationData, ITurnContext<IMessageActivity> turnContext, IMediator mediator)
+    public IssueIntakePlugin(ConversationData conversationData, ITurnContext<IMessageActivity> turnContext, IssueManagerApiClient apiClient)
     {
         _conversationData = conversationData;
         _turnContext = turnContext;
-        _mediator = mediator;
+        _apiClient = apiClient;
     }
 
     [KernelFunction(name: "CollectIssueInformation")]
@@ -83,34 +82,29 @@ public class IssueIntakePlugin
 
         try
         {
-            // Extract phone number from contact string (assuming format "Name - +1234567890")
-            var phoneNumber = ExtractPhoneNumber(contact);
-            var reporterName = ExtractReporterName(contact);
+            // Parse category and priority enums
+            var parsedCategory = ParseCategory(category ?? "General");
+            var parsedPriority = ParsePriority(priority!);
 
-            // Create the issue using MediatR command
-            var command = new IssueIntakeCommand
+            // Note: Similarity checking and auto-linking is now handled by the CreateIssueCommandHandler
+
+            // Create the issue using API client instead of MediatR
+            var command = new CreateIssueCommand
             {
-                ReporterPhone = phoneNumber,
-                ReporterName = reporterName,
+                Title = summary!,
+                Description = description!,
+                Category = parsedCategory,
+                Priority = parsedPriority,
+                Status = IssueStatus.New,
+                ReporterContactId = null, // Will be resolved by the API based on phone number
                 Channel = "WhatsApp",
-                Category = category ?? "General",
                 Product = product!,
                 Severity = severity!,
-                Priority = priority!,
                 Summary = summary!,
-                Description = description!,
-                ConsentFlag = true,
-                Status = "New",
-                Attachments = _conversationData.Attachments?.Select(a => new IssueAttachmentData
-                {
-                    Name = a.Name,
-                    ContentType = a.ContentType,
-                    Url = a.Url,
-                    Size = 0 // Default size if not available
-                }).ToList()
+                ConsentFlag = true
             };
 
-            var result = await _mediator.Send(command);
+            var result = await _apiClient.CreateIssueAsync(command);
             
             if (result.Succeeded)
             {
@@ -123,7 +117,12 @@ public class IssueIntakePlugin
 
                 // Format confirmation message
                 var confirmationMessage = FormatIssueConfirmation(issueData);
-                return confirmationMessage + $"\n\n📋 **Issue ID:** {result.Data}";
+                var finalMessage = confirmationMessage + $"\n\n📋 **Issue ID:** {result.Data}";
+                
+                // Add note about automatic similarity detection
+                finalMessage += "\n\n🔗 **Note:** Similar issues are automatically linked by our system for better tracking.";
+                
+                return finalMessage;
             }
             else
             {
@@ -136,6 +135,57 @@ public class IssueIntakePlugin
         }
     }
 
+    [KernelFunction(name: "CheckIssueStatus")]
+    [Description("Check the status of a previously created issue using the issue ID. Use this when users ask about the progress of their issues.")]
+    public async Task<string> CheckIssueStatusAsync(
+        [Description("The issue ID (GUID) to check status for")] string issueId
+    )
+    {
+        try
+        {
+            if (!Guid.TryParse(issueId, out var guid))
+            {
+                return "Please provide a valid issue ID. Issue IDs are typically in the format: 12345678-1234-1234-1234-123456789012";
+            }
+
+            var result = await _apiClient.GetIssueAsync(guid);
+            
+            if (result.Succeeded && result.Data != null)
+            {
+                var issue = result.Data;
+                var statusMessage = $"📋 **Issue Status Update**\n\n";
+                statusMessage += $"**Issue ID:** {issue.Id}\n";
+                statusMessage += $"**Reference:** {issue.ReferenceNumber}\n";
+                statusMessage += $"**Title:** {issue.Title}\n";
+                statusMessage += $"**Status:** {GetStatusEmoji(issue.Status)} {issue.Status}\n";
+                statusMessage += $"**Priority:** {GetPriorityEmoji(issue.Priority)} {issue.Priority}\n";
+                statusMessage += $"**Category:** {issue.Category}\n";
+                
+                if (issue.Created.HasValue)
+                {
+                    statusMessage += $"**Created:** {issue.Created.Value:yyyy-MM-dd HH:mm}\n";
+                }
+                
+                if (issue.LastModified.HasValue)
+                {
+                    statusMessage += $"**Last Updated:** {issue.LastModified.Value:yyyy-MM-dd HH:mm}\n";
+                }
+
+                statusMessage += $"\n**Description:** {issue.Description}";
+
+                return statusMessage;
+            }
+            else
+            {
+                return $"I couldn't find an issue with ID: {issueId}. Please check the ID and try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            return "There was a problem checking the issue status. Please try again later.";
+        }
+    }
+
     [KernelFunction(name: "CheckForDuplicateIssue")]
     [Description("OPTIONAL: Check if a similar issue has been reported recently by the same contact within the last 7 days to prevent duplicate issue creation. Use this before creating a new issue if you suspect the user might have already reported this problem.")]
     public async Task<string> CheckForDuplicateIssueAsync(
@@ -143,12 +193,97 @@ public class IssueIntakePlugin
         [Description("Detailed description of the current issue being reported for similarity comparison")] string currentDescription
     )
     {
-        // This would integrate with your deduplication service
-        // For now, return a simple response
-        return "No recent duplicate issues found. Proceeding with new issue creation.";
+        try
+        {
+            // Get recent issues to check for duplicates
+            var recentIssues = await _apiClient.GetIssuesAsync(
+                pageNumber: 1, 
+                pageSize: 50, 
+                keyword: phoneNumber
+            );
+
+            if (recentIssues?.Items?.Any() == true)
+            {
+                // Check for issues from the last 7 days
+                var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+                var recentByPhone = recentIssues.Items
+                    .Where(i => i.Created.HasValue && i.Created.Value >= sevenDaysAgo)
+                    .Where(i => !string.IsNullOrEmpty(i.ReporterPhone) && i.ReporterPhone.Contains(phoneNumber.Replace("+", "")))
+                    .ToList();
+
+                if (recentByPhone.Any())
+                {
+                    var duplicateMessage = $"⚠️ **Potential Duplicate Issues Found**\n\n";
+                    duplicateMessage += $"I found {recentByPhone.Count} recent issue(s) from this number:\n\n";
+                    
+                    foreach (var issue in recentByPhone.Take(3)) // Show max 3 recent issues
+                    {
+                        duplicateMessage += $"• **{issue.ReferenceNumber}** - {issue.Title} ({issue.Status})\n";
+                    }
+                    
+                    duplicateMessage += "\nWould you like to update an existing issue instead of creating a new one?";
+                    return duplicateMessage;
+                }
+            }
+
+            return "No recent duplicate issues found. Proceeding with new issue creation.";
+        }
+        catch (Exception ex)
+        {
+            return "Unable to check for duplicate issues at this time. Proceeding with new issue creation.";
+        }
     }
 
-    private string DetermineSeverity(string description, string category)
+    private IssueCategory ParseCategory(string category)
+    {
+        return category?.ToLowerInvariant() switch
+        {
+            "technical" => IssueCategory.Technical,
+            "billing" => IssueCategory.Billing,
+            "feature" => IssueCategory.Feature,
+            "general" => IssueCategory.General,
+            _ => IssueCategory.General
+        };
+    }
+
+    private IssuePriority ParsePriority(string priority)
+    {
+        return priority?.ToLowerInvariant() switch
+        {
+            "urgent" or "critical" => IssuePriority.Critical,
+            "high" => IssuePriority.High,
+            "medium" => IssuePriority.Medium,
+            "low" => IssuePriority.Low,
+            _ => IssuePriority.Medium
+        };
+    }
+
+    private string GetStatusEmoji(IssueStatus status)
+    {
+        return status switch
+        {
+            IssueStatus.New => "🆕",
+            IssueStatus.InProgress => "⏳",
+            IssueStatus.Resolved => "✅",
+            IssueStatus.Closed => "🔒",
+            IssueStatus.OnHold => "⏸️",
+            _ => "❓"
+        };
+    }
+
+    private string GetPriorityEmoji(IssuePriority priority)
+    {
+        return priority switch
+        {
+            IssuePriority.Critical => "🔴",
+            IssuePriority.High => "🟠",
+            IssuePriority.Medium => "🟡",
+            IssuePriority.Low => "🟢",
+            _ => "⚪"
+        };
+    }
+
+    private string DetermineSeverity(string description, string? category)
     {
         var descriptionLower = description?.ToLowerInvariant() ?? "";
 
@@ -173,7 +308,7 @@ public class IssueIntakePlugin
         return "Low";
     }
 
-    private string DeterminePriority(string severity, string category)
+    private string DeterminePriority(string severity, string? category)
     {
         return severity switch
         {
@@ -201,47 +336,11 @@ public class IssueIntakePlugin
             : firstSentence;
     }
 
-    private string ExtractPhoneNumber(string contact)
-    {
-        // Extract phone number from contact string
-        // Expected formats: "John Doe - +1234567890", "+1234567890", "John - +1234567890"
-        if (string.IsNullOrWhiteSpace(contact))
-            return _turnContext.Activity.From.Id; // Fallback to WhatsApp ID
-            
-        var phonePattern = @"\+?[1-9]\d{1,14}";
-        var match = System.Text.RegularExpressions.Regex.Match(contact, phonePattern);
-        
-        return match.Success ? match.Value : _turnContext.Activity.From.Id;
-    }
-    
-    private string? ExtractReporterName(string contact)
-    {
-        // Extract name from contact string
-        // Expected formats: "John Doe - +1234567890", "John - +1234567890"
-        if (string.IsNullOrWhiteSpace(contact))
-            return null;
-            
-        var parts = contact.Split(" - ");
-        if (parts.Length > 1)
-        {
-            return parts[0].Trim();
-        }
-        
-        // If no separator, check if it's just a phone number
-        var phonePattern = @"^\+?[1-9]\d{1,14}$";
-        if (System.Text.RegularExpressions.Regex.IsMatch(contact.Trim(), phonePattern))
-        {
-            return null; // It's just a phone number
-        }
-        
-        return contact.Trim(); // Assume the whole string is a name
-    }
-
     private string FormatIssueConfirmation(object issueData)
     {
         var data = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(issueData));
 
-        var message = "✅ **Issue Successfully Collected**\n\n";
+        var message = "✅ **Issue Successfully Created**\n\n";
         message += $"📞 **Contact:** {data.GetProperty("Contact").GetString()}\n";
         message += $"🏢 **Product/System:** {data.GetProperty("Product").GetString()}\n";
         message += $"📂 **Category:** {data.GetProperty("Category").GetString()}\n";
@@ -260,4 +359,5 @@ public class IssueIntakePlugin
 
         return message;
     }
+
 }

@@ -14,14 +14,25 @@ public sealed class HubClient : IAsyncDisposable
         var container = new CookieContainer();
         if (httpContextAccessor.HttpContext != null)
         {
+
             foreach (var c in httpContextAccessor.HttpContext.Request.Cookies)
             {
-                container.Add(new Cookie(c.Key, c.Value)
+                var sanitizedValue = Uri.EscapeDataString(c.Value); // Encode the value
+                container.Add(new Cookie(c.Key, sanitizedValue)
                 {
                     Domain = uri.Host,
                     Path = "/"
                 });
             }
+
+            //foreach (var c in httpContextAccessor.HttpContext.Request.Cookies)
+            //{
+            //    container.Add(new Cookie(c.Key, c.Value)
+            //    {
+            //        Domain = uri.Host,
+            //        Path = "/"
+            //    });
+            //}
         }
 
         var hubUrl = navigationManager.BaseUri.TrimEnd('/') + ISignalRHub.Url;

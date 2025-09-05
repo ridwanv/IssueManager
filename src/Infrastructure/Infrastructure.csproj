@@ -8,7 +8,8 @@
         <LangVersion>default</LangVersion>
     </PropertyGroup>
     <ItemGroup>
-       
+        <PackageReference Include="Azure.Identity" Version="1.12.0" />
+        <PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.64.0" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" Version="9.0.8" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="9.0.8" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="9.0.8" />

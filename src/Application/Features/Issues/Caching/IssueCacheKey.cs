@@ -15,6 +15,15 @@ public static class IssueCacheKey
     public static string GetByIdCacheKey(string parameters) {
         return $"IssueCacheKey:GetByIdCacheKey,{parameters}";
     }
+    public static string GetDetailCacheKey(string parameters) {
+        return $"IssueCacheKey:GetDetailCacheKey,{parameters}";
+    }
+    public static string GetTimelineCacheKey(string parameters) {
+        return $"IssueCacheKey:GetTimelineCacheKey,{parameters}";
+    }
+    public static string GetCacheKey(string parameters) {
+        return $"IssueCacheKey:{parameters}";
+    }
     public static IEnumerable<string>? Tags => new string[] { "issue" };
     public static void Refresh()
     {

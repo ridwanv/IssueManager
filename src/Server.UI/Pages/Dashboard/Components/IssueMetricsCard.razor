@@ -1,0 +1,240 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetDashboardMetrics
+
+<MudGrid>
+    <!-- Total Open Issues -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center dashboard-kpi-card" 
+                  Style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;" 
+                  Elevation="4">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Assignment" Size="Size.Large" Color="Color.Inherit" />
+                <MudText Typo="Typo.h3" Color="Color.Inherit" Class="font-weight-bold">
+                    @Metrics?.TotalOpenIssues.ToString("N0")
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Inherit" Class="text-uppercase">
+                    @L["Open Issues"]
+                </MudText>
+                @if (Metrics != null)
+                {
+                    <MudChip T="string" Size="Size.Small" Class="trend-chip" 
+                             Color="@GetTrendColor(Metrics.TrendDirection)">
+                        <MudIcon Icon="@GetTrendIcon(Metrics.TrendDirection)" Size="Size.Small" Class="mr-1" />
+                        @Metrics.TrendIndicator
+                    </MudChip>
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Critical Issues -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center dashboard-kpi-card" 
+                  Style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); color: #333;" 
+                  Elevation="4">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.PriorityHigh" Size="Size.Large" Color="Color.Error" />
+                <MudText Typo="Typo.h3" Color="Color.Error" Class="font-weight-bold">
+                    @Metrics?.CriticalIssues.ToString("N0")
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Error" Class="text-uppercase">
+                    @L["Critical Issues"]
+                </MudText>
+                @if (Metrics != null && Metrics.TotalOpenIssues > 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error">
+                        @($"{(double)Metrics.CriticalIssues / Metrics.TotalOpenIssues * 100:F1}% of total")
+                    </MudText>
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Average Resolution Time -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center dashboard-kpi-card" 
+                  Style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;" 
+                  Elevation="4">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Large" Color="Color.Inherit" />
+                <MudText Typo="Typo.h3" Color="Color.Inherit" Class="font-weight-bold">
+                    @Metrics?.AverageResolutionTimeFormatted
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Inherit" Class="text-uppercase">
+                    @L["Avg Resolution Time"]
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Inherit">
+                    @L["Mean Time To Resolution"]
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- SLA Compliance -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center dashboard-kpi-card" 
+                  Style="@GetSlaGradient()" 
+                  Elevation="4">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@GetSlaIcon()" Size="Size.Large" Color="Color.Inherit" />
+                <MudText Typo="Typo.h3" Color="Color.Inherit" Class="font-weight-bold">
+                    @Metrics?.SlaComplianceFormatted
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Inherit" Class="text-uppercase">
+                    @L["SLA Compliance"]
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Inherit">
+                    @L["Service Level Agreement"]
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<!-- Secondary Metrics Row -->
+<MudGrid Class="mt-4">
+    <!-- New Issues (24h) -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-3 text-center" Outlined="true" Style="border-left: 4px solid var(--mud-palette-info);">
+            <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.NewReleases" Color="Color.Info" />
+                <MudText Typo="Typo.h5" Color="Color.Info">@Metrics?.NewIssuesLast24Hours.ToString("N0")</MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">@L["New (24h)"]</MudText>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Resolved Issues (24h) -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-3 text-center" Outlined="true" Style="border-left: 4px solid var(--mud-palette-success);">
+            <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                <MudText Typo="Typo.h5" Color="Color.Success">@Metrics?.ResolvedLast24Hours.ToString("N0")</MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">@L["Resolved (24h)"]</MudText>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Net Change (24h) -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-3 text-center" Outlined="true" Style="@GetNetChangeStyle()">
+            <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@GetNetChangeIcon()" Color="@GetNetChangeColor()" />
+                <MudText Typo="Typo.h5" Color="@GetNetChangeColor()">@GetNetChange()</MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">@L["Net Change (24h)"]</MudText>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Data Freshness -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-3 text-center" Outlined="true" Style="border-left: 4px solid var(--mud-palette-dark);">
+            <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.Update" Color="Color.Dark" />
+                <MudText Typo="Typo.body2" Color="Color.Dark">@L["Last Updated"]</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    @(Metrics?.LastUpdated.ToString("HH:mm:ss") ?? "--:--:--")
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<style>
+    .dashboard-kpi-card {
+        min-height: 160px;
+        transition: transform 0.2s ease-in-out;
+        cursor: pointer;
+    }
+
+    .dashboard-kpi-card:hover {
+        transform: translateY(-4px);
+    }
+
+    .trend-chip {
+        background-color: rgba(255, 255, 255, 0.2) !important;
+        color: white !important;
+    }
+
+    .font-weight-bold {
+        font-weight: 700;
+    }
+
+    .text-uppercase {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+    }
+
+    .text-muted {
+        opacity: 0.7;
+    }
+</style>
+
+@code {
+    [Parameter] public DashboardMetricsDto? Metrics { get; set; }
+    [Inject] private IStringLocalizer<IssueMetricsCard> L { get; set; } = default!;
+
+    private string GetSlaGradient()
+    {
+        if (Metrics == null) return "background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white;";
+        
+        return Metrics.SlaCompliancePercentage >= 90
+            ? "background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;"
+            : Metrics.SlaCompliancePercentage >= 80
+                ? "background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); color: #333;"
+                : "background: linear-gradient(135deg, #dc3545 0%, #e91e63 100%); color: white;";
+    }
+
+    private string GetSlaIcon()
+    {
+        if (Metrics == null) return Icons.Material.Filled.Help;
+        
+        return Metrics.SlaCompliancePercentage >= 90
+            ? Icons.Material.Filled.CheckCircleOutline
+            : Metrics.SlaCompliancePercentage >= 80
+                ? Icons.Material.Filled.Warning
+                : Icons.Material.Filled.Error;
+    }
+
+    private Color GetTrendColor(string trendDirection) => trendDirection switch
+    {
+        "up" => Color.Warning,
+        "down" => Color.Success,
+        _ => Color.Info
+    };
+
+    private string GetTrendIcon(string trendDirection) => trendDirection switch
+    {
+        "up" => Icons.Material.Filled.TrendingUp,
+        "down" => Icons.Material.Filled.TrendingDown,
+        _ => Icons.Material.Filled.TrendingFlat
+    };
+
+    private int GetNetChange()
+    {
+        if (Metrics == null) return 0;
+        return Metrics.NewIssuesLast24Hours - Metrics.ResolvedLast24Hours;
+    }
+
+    private Color GetNetChangeColor()
+    {
+        var netChange = GetNetChange();
+        return netChange > 0 ? Color.Warning : netChange < 0 ? Color.Success : Color.Info;
+    }
+
+    private string GetNetChangeIcon()
+    {
+        var netChange = GetNetChange();
+        return netChange > 0 ? Icons.Material.Filled.Add : netChange < 0 ? Icons.Material.Filled.Remove : Icons.Material.Filled.Remove;
+    }
+
+    private string GetNetChangeStyle()
+    {
+        var netChange = GetNetChange();
+        return netChange > 0
+            ? "border-left: 4px solid var(--mud-palette-warning);"
+            : netChange < 0
+                ? "border-left: 4px solid var(--mud-palette-success);"
+                : "border-left: 4px solid var(--mud-palette-info);";
+    }
+}

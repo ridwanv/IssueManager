@@ -1,0 +1,326 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetIssues
+@using CleanArchitecture.Blazor.Application.Features.Issues.Commands.LinkIssues
+@using CleanArchitecture.Blazor.Domain.Enums
+@using MudBlazor
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<MudDialog>
+    <DialogContent>
+        <MudContainer Style="max-width: 600px;">
+            <MudText Typo="Typo.h6" Class="mb-4">@L["Link Related Issue"]</MudText>
+            
+            <!-- Link Type Selection -->
+            <MudSelect T="IssueLinkType?" 
+                       Label="@L["Relationship Type"]"
+                       @bind-Value="SelectedLinkType"
+                       Required="true"
+                       Class="mb-4">
+                <MudSelectItem Value="IssueLinkType.Duplicate">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Warning" />
+                        <div>
+                            <MudText Typo="Typo.body1">@L["Duplicate"]</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Same issue reported again"]</MudText>
+                        </div>
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="IssueLinkType.Related">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="Icons.Material.Filled.Link" Size="Size.Small" Color="Color.Info" />
+                        <div>
+                            <MudText Typo="Typo.body1">@L["Related"]</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Similar symptoms or context"]</MudText>
+                        </div>
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="IssueLinkType.CausedBy">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="Icons.Material.Filled.ArrowForward" Size="Size.Small" Color="Color.Secondary" />
+                        <div>
+                            <MudText Typo="Typo.body1">@L["Caused By"]</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["This issue is caused by the selected issue"]</MudText>
+                        </div>
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="IssueLinkType.Blocks">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Error" />
+                        <div>
+                            <MudText Typo="Typo.body1">@L["Blocks"]</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["This issue prevents resolution of the selected issue"]</MudText>
+                        </div>
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="IssueLinkType.PartOf">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="Icons.Material.Filled.Category" Size="Size.Small" Color="Color.Primary" />
+                        <div>
+                            <MudText Typo="Typo.body1">@L["Part Of"]</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Part of a larger incident or problem"]</MudText>
+                        </div>
+                    </div>
+                </MudSelectItem>
+            </MudSelect>
+
+            <!-- Issue Search -->
+            <MudAutocomplete T="IssueDto"
+                             Label="@L["Search Issues"]"
+                             @bind-Value="SelectedIssue"
+                             SearchFunc="SearchIssues"
+                             ToStringFunc="@(i => i?.ReferenceNumber != null ? $"#{i.ReferenceNumber} - {i.Title}" : "")"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             MaxItems="10"
+                             ShowProgressIndicator="true"
+                             Class="mb-4">
+                <ItemTemplate Context="issue">
+                    <div class="d-flex align-center justify-space-between pa-2">
+                        <div class="flex-grow-1">
+                            <MudText Typo="Typo.subtitle2">
+                                #{issue.ReferenceNumber} - @issue.Title
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @TruncateText(issue.Description, 80)
+                            </MudText>
+                            <div class="d-flex align-center gap-2 mt-1">
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(issue.Status)">
+                                    @issue.Status
+                                </MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(issue.Priority)">
+                                    @issue.Priority
+                                </MudChip>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @issue.Created?.ToString("MMM dd, yyyy")
+                                </MudText>
+                            </div>
+                        </div>
+                    </div>
+                </ItemTemplate>
+                <NoItemsTemplate>
+                    <MudText Align="Align.Center" Class="px-4 py-1">
+                        @L["No matching issues found"]
+                    </MudText>
+                </NoItemsTemplate>
+            </MudAutocomplete>
+
+            <!-- Selected Issue Preview -->
+            @if (SelectedIssue != null)
+            {
+                <MudCard Elevation="1" Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle1">@L["Selected Issue"]</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">
+                            #{SelectedIssue.ReferenceNumber} - @SelectedIssue.Title
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            @SelectedIssue.Description
+                        </MudText>
+                        <div class="d-flex align-center gap-2">
+                            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(SelectedIssue.Status)">
+                                @SelectedIssue.Status
+                            </MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(SelectedIssue.Priority)">
+                                @SelectedIssue.Priority
+                            </MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary">
+                                @SelectedIssue.Category
+                            </MudChip>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            <!-- Link Preview -->
+            @if (SelectedIssue != null && SelectedLinkType.HasValue)
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@GetLinkTypeIcon(SelectedLinkType.Value)" Size="Size.Small" />
+                        <MudText>
+                            @GetLinkPreviewText()
+                        </MudText>
+                    </div>
+                </MudAlert>
+            }
+
+            <!-- Validation Messages -->
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">
+                    @_validationError
+                </MudAlert>
+            }
+        </MudContainer>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@L["Cancel"]</MudButton>
+        <MudButton Color="Color.Primary" 
+                   Variant="Variant.Filled" 
+                   OnClick="LinkIssues"
+                   Disabled="@(!IsValid || _linking)">
+            @if (_linking)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @L["Link Issues"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public Guid CurrentIssueId { get; set; }
+    [Parameter] public string? CurrentIssueTitle { get; set; }
+
+    private IssueLinkType? SelectedLinkType;
+    private IssueDto? SelectedIssue;
+    private bool _linking = false;
+    private string? _validationError;
+
+    private bool IsValid => SelectedLinkType.HasValue && 
+                           SelectedIssue != null && 
+                           SelectedIssue.Id != CurrentIssueId;
+
+    private async Task<IEnumerable<IssueDto>> SearchIssues(string searchText, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(searchText) || searchText.Length < 2)
+            return Enumerable.Empty<IssueDto>();
+
+        try
+        {
+            var result = await Mediator.Send(new GetIssuesQuery
+            {
+                Keyword = searchText,
+                PageNumber = 1,
+                PageSize = 10
+            }, cancellationToken);
+
+            // Filter out the current issue from results
+            var items = result?.Items ?? Enumerable.Empty<IssueListDto>();
+            var filteredItems = items.Where(i => i.Id != CurrentIssueId);
+            
+            // Convert to IssueDto (assuming similar structure)
+            return filteredItems.Select(i => new IssueDto 
+            { 
+                Id = i.Id,
+                Title = i.Title,
+                Description = i.Description ?? "",
+                ReferenceNumber = i.ReferenceNumber,
+                Status = i.Status,
+                Priority = i.Priority,
+                Category = i.Category,
+                Created = i.Created
+            });
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error searching issues"]}: {ex.Message}", Severity.Error);
+            return Enumerable.Empty<IssueDto>();
+        }
+    }
+
+    private async Task LinkIssues()
+    {
+        if (!IsValid)
+            return;
+
+        _linking = true;
+        _validationError = null;
+
+        try
+        {
+            var command = new LinkIssuesCommand
+            {
+                ParentIssueId = CurrentIssueId,
+                ChildIssueId = SelectedIssue!.Id,
+                LinkType = SelectedLinkType!.Value,
+                CreatedBySystem = false,
+                Metadata = $"Manual link created via UI by user"
+            };
+
+            var result = await Mediator.Send(command);
+
+            if (result.Succeeded)
+            {
+                Snackbar.Add(L["Issues linked successfully"], Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                _validationError = result.Errors.FirstOrDefault() ?? L["Failed to link issues"];
+            }
+        }
+        catch (Exception ex)
+        {
+            _validationError = $"{L["Error linking issues"]}: {ex.Message}";
+        }
+        finally
+        {
+            _linking = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private string GetLinkPreviewText()
+    {
+        if (!SelectedLinkType.HasValue || SelectedIssue == null)
+            return "";
+
+        var relationshipText = SelectedLinkType.Value switch
+        {
+            IssueLinkType.Duplicate => L["will be marked as a duplicate of"],
+            IssueLinkType.Related => L["will be linked as related to"],
+            IssueLinkType.CausedBy => L["will be marked as caused by"],
+            IssueLinkType.Blocks => L["will be marked as blocking"],
+            IssueLinkType.PartOf => L["will be marked as part of"],
+            _ => L["will be linked to"]
+        };
+
+        return $"{L["Current issue"]} {relationshipText} #{SelectedIssue.ReferenceNumber}";
+    }
+
+    private static string GetLinkTypeIcon(IssueLinkType linkType) => linkType switch
+    {
+        IssueLinkType.Duplicate => Icons.Material.Filled.ContentCopy,
+        IssueLinkType.Related => Icons.Material.Filled.Link,
+        IssueLinkType.Blocks => Icons.Material.Filled.Block,
+        IssueLinkType.CausedBy => Icons.Material.Filled.ArrowForward,
+        IssueLinkType.PartOf => Icons.Material.Filled.Category,
+        _ => Icons.Material.Filled.Link
+    };
+
+    private static Color GetStatusColor(IssueStatus status) => status switch
+    {
+        IssueStatus.New => Color.Info,
+        IssueStatus.InProgress => Color.Warning,
+        IssueStatus.Resolved => Color.Success,
+        IssueStatus.Closed => Color.Secondary,
+        IssueStatus.OnHold => Color.Default,
+        _ => Color.Default
+    };
+
+    private static Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+
+    private static string TruncateText(string text, int maxLength)
+    {
+        return text.Length <= maxLength ? text : text[..maxLength] + "...";
+    }
+}

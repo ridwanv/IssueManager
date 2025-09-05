@@ -17,10 +17,87 @@ namespace CleanArchitecture.Blazor.Migrators.PostgreSQL.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.7")
+                .HasAnnotation("ProductVersion", "9.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_utc");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issue_id");
+
+                    b.Property<Guid>("IssueId1")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issue_id1");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_modified");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<string>("ScanStatus")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("scan_status");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("type");
+
+                    b.Property<string>("Uri")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("uri");
+
+                    b.HasKey("Id")
+                        .HasName("pk_attachments");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("ix_attachments_issue_id");
+
+                    b.HasIndex("IssueId1")
+                        .HasDatabaseName("ix_attachments_issue_id1");
+
+                    b.ToTable("attachments", (string)null);
+                });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.AuditTrail", b =>
                 {
@@ -139,6 +216,12 @@ namespace CleanArchitecture.Blazor.Migrators.PostgreSQL.Migrations
                         .HasColumnType("character varying(450)")
                         .HasColumnName("phone_number");
 
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("tenant_id");
+
                     b.HasKey("Id")
                         .HasName("pk_contacts");
 
@@ -223,6 +306,369 @@ namespace CleanArchitecture.Blazor.Migrators.PostgreSQL.Migrations
                         .HasDatabaseName("ix_documents_tenant_id");
 
                     b.ToTable("documents", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.EventLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_utc");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issue_id");
+
+                    b.Property<Guid>("IssueId1")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issue_id1");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_modified");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("payload");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_event_logs");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("ix_event_logs_issue_id");
+
+                    b.HasIndex("IssueId1")
+                        .HasDatabaseName("ix_event_logs_issue_id1");
+
+                    b.ToTable("event_logs", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.InternalNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("Id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("Content");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("CreatedAt");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("CreatedByUserId");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("IssueId");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_modified");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("TenantId");
+
+                    b.HasKey("Id")
+                        .HasName("pk_internal_notes");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("IX_InternalNotes_IssueId");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_InternalNotes_TenantId");
+
+                    b.HasIndex("IssueId", "CreatedAt")
+                        .HasDatabaseName("IX_InternalNotes_IssueId_CreatedAt");
+
+                    b.ToTable("InternalNotes", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Issue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AssignedUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("assigned_user_id");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("integer")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Channel")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("channel");
+
+                    b.Property<bool>("ConsentFlag")
+                        .HasColumnType("boolean")
+                        .HasColumnName("consent_flag");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid?>("DuplicateOfId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("duplicate_of_id");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_modified");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
+                    b.Property<string>("Product")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("product");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("integer")
+                        .HasColumnName("product_id");
+
+                    b.Property<string>("ReferenceNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("reference_number");
+
+                    b.Property<int?>("ReporterContactId")
+                        .HasColumnType("integer")
+                        .HasColumnName("reporter_contact_id");
+
+                    b.Property<string>("ReporterName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("reporter_name");
+
+                    b.Property<string>("ReporterPhone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("reporter_phone");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("severity");
+
+                    b.Property<string>("SourceMessageIds")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("source_message_ids");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("summary");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("WhatsAppMetadata")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("whats_app_metadata");
+
+                    b.HasKey("Id")
+                        .HasName("pk_issues");
+
+                    b.HasIndex("DuplicateOfId")
+                        .HasDatabaseName("ix_issues_duplicate_of_id");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("ix_issues_product_id");
+
+                    b.HasIndex("ReferenceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_issues_reference_number");
+
+                    b.HasIndex("ReporterContactId")
+                        .HasDatabaseName("ix_issues_reporter_contact_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_issues_tenant_id");
+
+                    b.ToTable("issues", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.IssueLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ChildIssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("child_issue_id");
+
+                    b.Property<decimal?>("ConfidenceScore")
+                        .HasColumnType("decimal(5,4)")
+                        .HasColumnName("confidence_score");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("CreatedBySystem")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("created_by_system");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("last_modified");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<int>("LinkType")
+                        .HasColumnType("integer")
+                        .HasColumnName("link_type");
+
+                    b.Property<string>("Metadata")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("metadata");
+
+                    b.Property<Guid>("ParentIssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_issue_id");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_issue_links");
+
+                    b.HasIndex("ChildIssueId")
+                        .HasDatabaseName("ix_issue_links_child_issue_id");
+
+                    b.HasIndex("ParentIssueId")
+                        .HasDatabaseName("ix_issue_links_parent_issue_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_issue_links_tenant_id");
+
+                    b.HasIndex("ConfidenceScore", "TenantId")
+                        .HasDatabaseName("ix_issue_links_confidence_score_tenant_id");
+
+                    b.HasIndex("CreatedBySystem", "TenantId")
+                        .HasDatabaseName("ix_issue_links_created_by_system_tenant_id");
+
+                    b.HasIndex("LinkType", "TenantId")
+                        .HasDatabaseName("ix_issue_links_link_type_tenant_id");
+
+                    b.HasIndex("ParentIssueId", "ChildIssueId", "TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_issue_links_parent_issue_id_child_issue_id_tenant_id");
+
+                    b.ToTable("issue_links", (string)null);
                 });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.PicklistSet", b =>
@@ -1000,6 +1446,25 @@ namespace CleanArchitecture.Blazor.Migrators.PostgreSQL.Migrations
                     b.ToTable("data_protection_keys", (string)null);
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Attachment", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", null)
+                        .WithMany("Attachments")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_attachments_issues_issue_id");
+
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId1")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_attachments_issues_issue_id1");
+
+                    b.Navigation("Issue");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.AuditTrail", b =>
                 {
                     b.HasOne("CleanArchitecture.Blazor.Domain.Identity.ApplicationUser", "Owner")
@@ -1035,6 +1500,85 @@ namespace CleanArchitecture.Blazor.Migrators.PostgreSQL.Migrations
                     b.Navigation("LastModifiedByUser");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.EventLog", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", null)
+                        .WithMany("EventLogs")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_event_logs_issues_issue_id");
+
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId1")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_event_logs_issues_issue_id1");
+
+                    b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.InternalNote", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "Issue")
+                        .WithMany("InternalNotes")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_internal_notes_issues_issue_id");
+
+                    b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Issue", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "DuplicateOf")
+                        .WithMany()
+                        .HasForeignKey("DuplicateOfId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_issues_issues_duplicate_of_id");
+
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Product", "ProductRelation")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_issues_products_product_id");
+
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Contact", "ReporterContact")
+                        .WithMany()
+                        .HasForeignKey("ReporterContactId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_issues_contacts_reporter_contact_id");
+
+                    b.Navigation("DuplicateOf");
+
+                    b.Navigation("ProductRelation");
+
+                    b.Navigation("ReporterContact");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.IssueLink", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "ChildIssue")
+                        .WithMany("ParentLinks")
+                        .HasForeignKey("ChildIssueId")
+                        .OnDelete(DeleteBehavior.ClientCascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_issue_links_issues_child_issue_id");
+
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "ParentIssue")
+                        .WithMany("ChildLinks")
+                        .HasForeignKey("ParentIssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_issue_links_issues_parent_issue_id");
+
+                    b.Navigation("ChildIssue");
+
+                    b.Navigation("ParentIssue");
                 });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Identity.ApplicationRole", b =>
@@ -1151,6 +1695,19 @@ namespace CleanArchitecture.Blazor.Migrators.PostgreSQL.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_login_risk_summaries_asp_net_users_user_id");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Issue", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("ChildLinks");
+
+                    b.Navigation("EventLogs");
+
+                    b.Navigation("InternalNotes");
+
+                    b.Navigation("ParentLinks");
                 });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Identity.ApplicationRole", b =>

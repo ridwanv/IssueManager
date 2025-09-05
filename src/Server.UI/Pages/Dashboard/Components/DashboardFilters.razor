@@ -1,0 +1,483 @@
+﻿@using CleanArchitecture.Blazor.Domain.Enums
+@using DashboardFiltersModel = CleanArchitecture.Blazor.Server.UI.Models.DashboardFiltersModel
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudStack Spacing="3">
+        <!-- Header -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.FilterList" Color="Color.Primary" Size="Size.Medium" />
+                <MudText Typo="Typo.h6">@L["Dashboard Filters"]</MudText>
+            </MudStack>
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                <MudTooltip Text="@L["Collapse Filters"]">
+                    <MudToggleIconButton @bind-Toggled="_filtersExpanded"
+                                        Icon="@Icons.Material.Filled.ExpandMore" 
+                                        ToggledIcon="@Icons.Material.Filled.ExpandLess"
+                                        Size="Size.Small" />
+                </MudTooltip>
+                @if (HasActiveFilters())
+                {
+                    <MudButton Variant="Variant.Text" 
+                              Color="Color.Secondary" 
+                              Size="Size.Small"
+                              StartIcon="@Icons.Material.Filled.Clear"
+                              OnClick="ClearAllFilters">
+                        @L["Clear All"]
+                    </MudButton>
+                }
+            </MudStack>
+        </MudStack>
+
+        <!-- Quick Filters -->
+        <MudCollapse Expanded="_filtersExpanded">
+            <MudStack Spacing="3">
+                <!-- Quick Filter Presets -->
+                <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+                    <MudText Typo="Typo.body2" Class="filter-label">@L["Quick Filters:"]</MudText>
+                    
+                    <MudChip T="string" 
+                            Color="@(_selectedPreset == "all" ? Color.Primary : Color.Default)"
+                            Variant="@(_selectedPreset == "all" ? Variant.Filled : Variant.Outlined)"
+                            Size="Size.Small"
+                            OnClick="@(() => ApplyPreset("all"))">
+                        @L["All Issues"]
+                    </MudChip>
+                    
+                    <MudChip T="string" 
+                            Color="@(_selectedPreset == "critical" ? Color.Error : Color.Default)"
+                            Variant="@(_selectedPreset == "critical" ? Variant.Filled : Variant.Outlined)"
+                            Size="Size.Small"
+                            OnClick="@(() => ApplyPreset("critical"))">
+                        @L["Critical Only"]
+                    </MudChip>
+                    
+                    <MudChip T="string" 
+                            Color="@(_selectedPreset == "new" ? Color.Info : Color.Default)"
+                            Variant="@(_selectedPreset == "new" ? Variant.Filled : Variant.Outlined)"
+                            Size="Size.Small"
+                            OnClick="@(() => ApplyPreset("new"))">
+                        @L["New Issues"]
+                    </MudChip>
+                    
+                    <MudChip T="string" 
+                            Color="@(_selectedPreset == "today" ? Color.Success : Color.Default)"
+                            Variant="@(_selectedPreset == "today" ? Variant.Filled : Variant.Outlined)"
+                            Size="Size.Small"
+                            OnClick="@(() => ApplyPreset("today"))">
+                        @L["Today"]
+                    </MudChip>
+                    
+                    <MudChip T="string" 
+                            Color="@(_selectedPreset == "whatsapp" ? Color.Secondary : Color.Default)"
+                            Variant="@(_selectedPreset == "whatsapp" ? Variant.Filled : Variant.Outlined)"
+                            Size="Size.Small"
+                            OnClick="@(() => ApplyPreset("whatsapp"))">
+                        @L["WhatsApp"]
+                    </MudChip>
+                </MudStack>
+
+                <MudDivider />
+
+                <!-- Advanced Filters -->
+                <MudGrid>
+                    <!-- Time Range -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="string" 
+                                  @bind-Value="_filters.TimeRange" 
+                                  @bind-Value:after="OnFilterChanged"
+                                  Label="@L["Time Range"]"
+                                  Variant="Variant.Outlined"
+                                  Dense="true">
+                            <MudSelectItem Value="@("7d")">@L["Last 7 days"]</MudSelectItem>
+                            <MudSelectItem Value="@("30d")">@L["Last 30 days"]</MudSelectItem>
+                            <MudSelectItem Value="@("90d")">@L["Last 90 days"]</MudSelectItem>
+                            <MudSelectItem Value="@("today")">@L["Today"]</MudSelectItem>
+                            <MudSelectItem Value="@("yesterday")">@L["Yesterday"]</MudSelectItem>
+                            <MudSelectItem Value="@("this_week")">@L["This Week"]</MudSelectItem>
+                            <MudSelectItem Value="@("last_week")">@L["Last Week"]</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Status Filter -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="IssueStatus?" 
+                                  @bind-Value="_filters.Status" 
+                                  @bind-Value:after="OnFilterChanged"
+                                  Label="@L["Status"]"
+                                  Variant="Variant.Outlined"
+                                  Dense="true"
+                                  Clearable="true">
+                            @foreach (var status in Enum.GetValues<IssueStatus>())
+                            {
+                                <MudSelectItem Value="@status">
+                                    <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                        <MudIcon Icon="@GetStatusIcon(status)" 
+                                                Color="@GetStatusColor(status)" 
+                                                Size="Size.Small" />
+                                        @GetStatusDisplayName(status)
+                                    </MudStack>
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Priority Filter -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="IssuePriority?" 
+                                  @bind-Value="_filters.Priority" 
+                                  @bind-Value:after="OnFilterChanged"
+                                  Label="@L["Priority"]"
+                                  Variant="Variant.Outlined"
+                                  Dense="true"
+                                  Clearable="true">
+                            @foreach (var priority in Enum.GetValues<IssuePriority>().OrderByDescending(p => (int)p))
+                            {
+                                <MudSelectItem Value="@priority">
+                                    <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                        <MudIcon Icon="@GetPriorityIcon(priority)" 
+                                                Color="@GetPriorityColor(priority)" 
+                                                Size="Size.Small" />
+                                        @GetPriorityDisplayName(priority)
+                                    </MudStack>
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Category Filter -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="IssueCategory?" 
+                                  @bind-Value="_filters.Category" 
+                                  @bind-Value:after="OnFilterChanged"
+                                  Label="@L["Category"]"
+                                  Variant="Variant.Outlined"
+                                  Dense="true"
+                                  Clearable="true">
+                            @foreach (var category in Enum.GetValues<IssueCategory>())
+                            {
+                                <MudSelectItem Value="@category">
+                                    <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                        <MudIcon Icon="@GetCategoryIcon(category)" 
+                                                Color="@GetCategoryColor(category)" 
+                                                Size="Size.Small" />
+                                        @GetCategoryDisplayName(category)
+                                    </MudStack>
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Channel Filter -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="string" 
+                                  @bind-Value="_filters.Channel" 
+                                  @bind-Value:after="OnFilterChanged"
+                                  Label="@L["Channel"]"
+                                  Variant="Variant.Outlined"
+                                  Dense="true"
+                                  Clearable="true">
+                            <MudSelectItem Value="@("WhatsApp")">
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Small" />
+                                    @L["WhatsApp"]
+                                </MudStack>
+                            </MudSelectItem>
+                            <MudSelectItem Value="@("Email")">
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" />
+                                    @L["Email"]
+                                </MudStack>
+                            </MudSelectItem>
+                            <MudSelectItem Value="@("Web")">
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Language" Size="Size.Small" />
+                                    @L["Web Portal"]
+                                </MudStack>
+                            </MudSelectItem>
+                            <MudSelectItem Value="@("Phone")">
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" />
+                                    @L["Phone"]
+                                </MudStack>
+                            </MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Auto-refresh Toggle -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSwitch @bind-Value="_filters.AutoRefresh" 
+                                      @bind-Value:after="OnAutoRefreshChanged"
+                                      Color="Color.Primary" />
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@L["Auto-refresh"]</MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">
+                                    @(_filters.AutoRefresh ? L["Every 30s"] : L["Manual"])
+                                </MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+
+                <!-- Active Filters Summary -->
+                @if (HasActiveFilters())
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                        <MudStack Row Spacing="1" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                            <MudText Typo="Typo.body2">@L["Active filters:"]</MudText>
+                            @if (!string.IsNullOrEmpty(_filters.TimeRange))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" 
+                                        OnClose="@(() => { _filters.TimeRange = "30d"; OnFilterChanged(); })">
+                                    @GetTimeRangeDisplayName(_filters.TimeRange)
+                                </MudChip>
+                            }
+                            @if (_filters.Status.HasValue)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_filters.Status.Value)" 
+                                        OnClose="@(() => { _filters.Status = null; OnFilterChanged(); })">
+                                    @GetStatusDisplayName(_filters.Status.Value)
+                                </MudChip>
+                            }
+                            @if (_filters.Priority.HasValue)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(_filters.Priority.Value)" 
+                                        OnClose="@(() => { _filters.Priority = null; OnFilterChanged(); })">
+                                    @GetPriorityDisplayName(_filters.Priority.Value)
+                                </MudChip>
+                            }
+                            @if (_filters.Category.HasValue)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="@GetCategoryColor(_filters.Category.Value)" 
+                                        OnClose="@(() => { _filters.Category = null; OnFilterChanged(); })">
+                                    @GetCategoryDisplayName(_filters.Category.Value)
+                                </MudChip>
+                            }
+                            @if (!string.IsNullOrEmpty(_filters.Channel))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" 
+                                        OnClose="@(() => { _filters.Channel = null; OnFilterChanged(); })">
+                                    @_filters.Channel
+                                </MudChip>
+                            }
+                        </MudStack>
+                    </MudAlert>
+                }
+            </MudStack>
+        </MudCollapse>
+    </MudStack>
+</MudPaper>
+
+<style>
+    .filter-label {
+        align-self: center;
+        font-weight: 500;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .text-muted {
+        opacity: 0.7;
+    }
+</style>
+
+@code {
+    [Parameter] public DashboardFiltersModel Filters { get; set; } = new();
+    [Parameter] public EventCallback<DashboardFiltersModel> FiltersChanged { get; set; }
+    [Parameter] public EventCallback<bool> AutoRefreshChanged { get; set; }
+    
+    [Inject] private IStringLocalizer<DashboardFilters> L { get; set; } = default!;
+
+    private DashboardFiltersModel _filters = new();
+    private bool _filtersExpanded = true;
+    private string _selectedPreset = "all";
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            _filters = Filters with { }; // Create a copy
+        }
+        catch (Exception)
+        {
+            // Fallback if copy fails
+            _filters = new DashboardFiltersModel();
+        }
+    }
+
+    private async Task OnFilterChanged()
+    {
+        try
+        {
+            if (FiltersChanged.HasDelegate)
+            {
+                await FiltersChanged.InvokeAsync(_filters);
+            }
+        }
+        catch (Exception)
+        {
+            // Ignore callback failures to prevent component crash
+        }
+    }
+
+    private async Task OnAutoRefreshChanged()
+    {
+        try
+        {
+            await OnFilterChanged();
+            if (AutoRefreshChanged.HasDelegate)
+            {
+                await AutoRefreshChanged.InvokeAsync(_filters.AutoRefresh);
+            }
+        }
+        catch (Exception)
+        {
+            // Ignore callback failures to prevent component crash
+        }
+    }
+
+    private async Task ApplyPreset(string preset)
+    {
+        _selectedPreset = preset;
+        
+        // Reset all filters first
+        _filters = new DashboardFiltersModel { AutoRefresh = _filters.AutoRefresh };
+        
+        switch (preset)
+        {
+            case "critical":
+                _filters.Priority = IssuePriority.Critical;
+                break;
+            case "new":
+                _filters.Status = IssueStatus.New;
+                break;
+            case "today":
+                _filters.TimeRange = "today";
+                break;
+            case "whatsapp":
+                _filters.Channel = "WhatsApp";
+                break;
+            case "all":
+            default:
+                _filters.TimeRange = "30d";
+                break;
+        }
+        
+        await OnFilterChanged();
+    }
+
+    private async Task ClearAllFilters()
+    {
+        _filters = new DashboardFiltersModel { AutoRefresh = _filters.AutoRefresh, TimeRange = "30d" };
+        _selectedPreset = "all";
+        await OnFilterChanged();
+    }
+
+    private bool HasActiveFilters()
+    {
+        return _filters.TimeRange != "30d" || 
+               _filters.Status.HasValue || 
+               _filters.Priority.HasValue || 
+               _filters.Category.HasValue || 
+               !string.IsNullOrEmpty(_filters.Channel);
+    }
+
+    private string GetTimeRangeDisplayName(string timeRange) => timeRange switch
+    {
+        "7d" => L?["Last 7 days"] ?? "Last 7 days",
+        "30d" => L?["Last 30 days"] ?? "Last 30 days",
+        "90d" => L?["Last 90 days"] ?? "Last 90 days",
+        "today" => L?["Today"] ?? "Today",
+        "yesterday" => L?["Yesterday"] ?? "Yesterday",
+        "this_week" => L?["This Week"] ?? "This Week",
+        "last_week" => L?["Last Week"] ?? "Last Week",
+        _ => timeRange
+    };
+
+    // Status Methods
+    private string GetStatusIcon(IssueStatus status) => status switch
+    {
+        IssueStatus.New => Icons.Material.Filled.FiberNew,
+        IssueStatus.InProgress => Icons.Material.Filled.PlayArrow,
+        IssueStatus.Resolved => Icons.Material.Filled.CheckCircle,
+        IssueStatus.Closed => Icons.Material.Filled.Lock,
+        IssueStatus.OnHold => Icons.Material.Filled.Pause,
+        _ => Icons.Material.Filled.Help
+    };
+
+    private Color GetStatusColor(IssueStatus status) => status switch
+    {
+        IssueStatus.New => Color.Info,
+        IssueStatus.InProgress => Color.Warning,
+        IssueStatus.Resolved => Color.Success,
+        IssueStatus.Closed => Color.Dark,
+        IssueStatus.OnHold => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetStatusDisplayName(IssueStatus status) => status switch
+    {
+        IssueStatus.New => L?["New"] ?? "New",
+        IssueStatus.InProgress => L?["In Progress"] ?? "In Progress",
+        IssueStatus.Resolved => L?["Resolved"] ?? "Resolved",
+        IssueStatus.Closed => L?["Closed"] ?? "Closed",
+        IssueStatus.OnHold => L?["On Hold"] ?? "On Hold",
+        _ => status.ToString()
+    };
+
+    // Priority Methods
+    private string GetPriorityIcon(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Icons.Material.Filled.PriorityHigh,
+        IssuePriority.High => Icons.Material.Filled.KeyboardArrowUp,
+        IssuePriority.Medium => Icons.Material.Filled.Remove,
+        IssuePriority.Low => Icons.Material.Filled.KeyboardArrowDown,
+        _ => Icons.Material.Filled.Help
+    };
+
+    private Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetPriorityDisplayName(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => L?["Critical"] ?? "Critical",
+        IssuePriority.High => L?["High"] ?? "High",
+        IssuePriority.Medium => L?["Medium"] ?? "Medium",
+        IssuePriority.Low => L?["Low"] ?? "Low",
+        _ => priority.ToString()
+    };
+
+    // Category Methods
+    private string GetCategoryIcon(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => Icons.Material.Filled.BugReport,
+        IssueCategory.Billing => Icons.Material.Filled.Payment,
+        IssueCategory.General => Icons.Material.Filled.Help,
+        IssueCategory.Feature => Icons.Material.Filled.Star,
+        _ => Icons.Material.Filled.Category
+    };
+
+    private Color GetCategoryColor(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => Color.Error,
+        IssueCategory.Billing => Color.Warning,
+        IssueCategory.General => Color.Info,
+        IssueCategory.Feature => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetCategoryDisplayName(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => L?["Technical"] ?? "Technical",
+        IssueCategory.Billing => L?["Billing"] ?? "Billing",
+        IssueCategory.General => L?["General"] ?? "General",
+        IssueCategory.Feature => L?["Feature"] ?? "Feature",
+        _ => category.ToString()
+    };
+}

@@ -210,5 +210,50 @@ namespace IssueManager.Bot.Controllers
                 return StatusCode(500, "Ping failed");
             }
         }
+
+        /// <summary>
+        /// Endpoint for sending proactive WhatsApp messages
+        /// </summary>
+        [HttpPost("api/proactive-message")]
+        public async Task<IActionResult> SendProactiveMessageAsync([FromBody] ProactiveMessageRequest request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrEmpty(request.PhoneNumber) || string.IsNullOrEmpty(request.Message))
+                {
+                    _logger.LogWarning("Invalid proactive message request - missing required fields");
+                    return BadRequest("PhoneNumber and Message are required");
+                }
+
+                _logger.LogInformation("Sending proactive message to {PhoneNumber}", request.PhoneNumber);
+
+                var success = await _whatsAppApiService.SendTextMessageAsync(request.PhoneNumber, request.Message);
+
+                if (success)
+                {
+                    _logger.LogInformation("Proactive message sent successfully to {PhoneNumber}", request.PhoneNumber);
+                    return Ok(new { Success = true, Message = "Proactive message sent successfully" });
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send proactive message to {PhoneNumber}", request.PhoneNumber);
+                    return StatusCode(500, new { Success = false, Message = "Failed to send proactive message" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending proactive message to {PhoneNumber}", request?.PhoneNumber);
+                return StatusCode(500, new { Success = false, Message = "Internal server error" });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request model for proactive messaging
+    /// </summary>
+    public class ProactiveMessageRequest
+    {
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
     }
 }

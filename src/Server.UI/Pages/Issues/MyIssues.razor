@@ -1,0 +1,292 @@
+﻿@page "/my-issues"
+
+@using CleanArchitecture.Blazor.Application.Features.Issues.Caching
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetMyAssignedIssues
+@using CleanArchitecture.Blazor.Server.UI.Components.Issues
+@using CleanArchitecture.Blazor.Server.UI.Components.UtcToLocalTime
+@using CleanArchitecture.Blazor.Server.UI.Hubs
+@using CleanArchitecture.Blazor.Domain.Enums
+@using Microsoft.AspNetCore.SignalR.Client
+
+@inject IStringLocalizer<MyIssues> L
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IPermissionService PermissionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+@attribute [Authorize(Policy = Permissions.Issues.View)]
+<PageTitle>@Title</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudStack Spacing="3">
+        <!-- Header -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.AssignmentInd" Color="Color.Primary" Size="Size.Large" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h5" Class="font-weight-bold">@Title</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        Issues assigned to you
+                    </MudText>
+                </MudStack>
+            </MudStack>
+            
+            <MudStack Row Spacing="2">
+                <MudButton Disabled="@_loading"
+                           OnClick="@(() => OnRefresh())"
+                           StartIcon="@Icons.Material.Outlined.Refresh"
+                           Variant="Variant.Outlined"
+                           Size="Size.Small">
+                    @ConstantString.Refresh
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        <!-- Issues Data Grid -->
+        <MudDataGrid ServerData="@(ServerReload)"
+                     FixedHeader="true"
+                     FixedFooter="false"
+                     Virtualize="false"
+                     @bind-RowsPerPage="_defaultPageSize"
+                     Loading="@_loading"
+                     MultiSelection="true"
+                     T="IssueListDto"
+                     SelectOnRowClick="false"
+                     RowClick="@(args => OnRowClick(args.Item))"
+                     @bind-SelectedItems="_selectedItems"
+                     Hover="true" @ref="_dataGrid">
+            
+            <Columns>
+                <SelectColumn T="IssueListDto" />
+                
+                <PropertyColumn Property="x => x.ReferenceNumber" Title="@L["Reference"]" Sortable="true">
+                    <CellTemplate>
+                        <MudLink Href="@($"/issues/{context.Item.Id}")">
+                            @context.Item.ReferenceNumber
+                        </MudLink>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Title" Title="@L["Title"]" Sortable="true">
+                    <CellTemplate>
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body2">@context.Item.Title</MudText>
+                            @if (!string.IsNullOrEmpty(context.Item.Description))
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    @(context.Item.Description.Length > 50 ? context.Item.Description.Substring(0, 50) + "..." : context.Item.Description)
+                                </MudText>
+                            }
+                        </MudStack>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Status" Title="@L["Status"]" Sortable="true">
+                    <CellTemplate>
+                        <IssueStatusBadge Status="@context.Item.Status" />
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Priority" Title="@L["Priority"]" Sortable="true">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(context.Item.Priority)" Variant="Variant.Text">
+                            @context.Item.Priority.ToString()
+                        </MudChip>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Category" Title="@L["Category"]" Sortable="true" />
+                
+                <PropertyColumn Property="x => x.ReporterName" Title="@L["Reporter"]" Sortable="false">
+                    <CellTemplate>
+                        <MudStack Spacing="0">
+                            @if (!string.IsNullOrEmpty(context.Item.ReporterName))
+                            {
+                                <MudText Typo="Typo.body2">@context.Item.ReporterName</MudText>
+                            }
+                            @if (!string.IsNullOrEmpty(context.Item.ReporterPhone))
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Item.ReporterPhone</MudText>
+                            }
+                        </MudStack>
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <PropertyColumn Property="x => x.Created" Format="yyyy-MM-dd HH:mm" Title="@L["Created"]" Sortable="true">
+                    <CellTemplate>
+                        @if (context.Item.Created.HasValue)
+                        {
+                            <UtcToLocal UTCDateTime="context.Item.Created.Value" Format="yyyy-MM-dd HH:mm" />
+                        }
+                    </CellTemplate>
+                </PropertyColumn>
+                
+                <TemplateColumn CellClass="d-flex justify-end" Sortable="false">
+                    <CellTemplate>
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.Visibility" 
+                                       OnClick="@(() => OnView(context.Item))" />
+                        @if (_accessRights.Edit)
+                        {
+                            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.Edit" 
+                                           OnClick="@(() => OnEdit(context.Item))" />
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+            
+            <NoRecordsContent>
+                <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-8">
+                    <MudIcon Icon="@Icons.Material.Outlined.Assignment" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h6" Color="Color.Secondary">No issues assigned to you</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        When issues are assigned to you, they will appear here.
+                    </MudText>
+                </MudStack>
+            </NoRecordsContent>
+            
+            <LoadingContent>
+                <MudText>@ConstantString.Loading</MudText>
+            </LoadingContent>
+            
+            <PagerContent>
+                <MudDataGridPager PageSizeOptions="@(new int[]{10,15,30,50,100})" />
+            </PagerContent>
+        </MudDataGrid>
+    </MudStack>
+</MudContainer>
+
+@code {
+    public string? Title { get; private set; }
+    private int _defaultPageSize = 15;
+    private HashSet<IssueListDto> _selectedItems = new();
+    private MudDataGrid<IssueListDto> _dataGrid = default!;
+    private bool _loading;
+    private HubConnection? _hubConnection;
+    
+    [CascadingParameter]
+    private UserProfile? UserProfile { get; set; }
+
+    private GetMyAssignedIssuesQuery _query { get; set; } = new();
+    private IssuesAccessRights _accessRights = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Title = L["My Issues"];
+        _accessRights = await PermissionService.GetAccessRightsAsync<IssuesAccessRights>();
+        await InitializeSignalRConnection();
+    }
+
+    private async Task InitializeSignalRConnection()
+    {
+        try
+        {
+            var hubUrl = Navigation.ToAbsoluteUri(ISignalRHub.Url);
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(hubUrl)
+                .WithAutomaticReconnect()
+                .Build();
+
+            // Register event handlers for assigned issues only
+            _hubConnection.On<IssueListDto>("IssueAssignedToMe", OnIssueAssignedToMe);
+            _hubConnection.On<IssueListDto>("IssueUpdated", OnMyIssueUpdated);
+            _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnMyIssueStatusChanged);
+
+            await _hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"SignalR connection failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task<GridData<IssueListDto>> ServerReload(GridState<IssueListDto> state)
+    {
+        try
+        {
+            _loading = true;
+            _query.CurrentUser = UserProfile;
+            
+            var sortDefinition = state.SortDefinitions.FirstOrDefault();
+            _query.OrderBy = sortDefinition?.SortBy ?? "Created";
+            _query.SortDirection = (sortDefinition != null && sortDefinition.Descending)
+                                 ? SortDirection.Descending.ToString()
+                                 : SortDirection.Ascending.ToString();
+            _query.PageNumber = state.Page + 1;
+            _query.PageSize = state.PageSize;
+            
+            var result = await Mediator.Send(_query).ConfigureAwait(false);
+            return new GridData<IssueListDto>() { TotalItems = result.TotalItems, Items = result.Items };
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnRefresh()
+    {
+        IssueCacheKey.Refresh();
+        await _dataGrid.ReloadServerData();
+    }
+
+    private void OnRowClick(IssueListDto item)
+    {
+        Navigation.NavigateTo($"/issues/{item.Id}");
+    }
+
+    private void OnView(IssueListDto item)
+    {
+        Navigation.NavigateTo($"/issues/{item.Id}");
+    }
+
+    private void OnEdit(IssueListDto item)
+    {
+        Navigation.NavigateTo($"/issues/{item.Id}/edit");
+    }
+
+    private static Color GetPriorityColor(IssuePriority priority)
+    {
+        return priority switch
+        {
+            IssuePriority.Low => Color.Success,
+            IssuePriority.Medium => Color.Warning,
+            IssuePriority.High => Color.Error,
+            IssuePriority.Critical => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    // SignalR event handlers for my issues
+    private async Task OnIssueAssignedToMe(IssueListDto issue)
+    {
+        Snackbar.Add($"New issue assigned to you: {issue.ReferenceNumber}", Severity.Info);
+        await _dataGrid.ReloadServerData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnMyIssueUpdated(IssueListDto issue)
+    {
+        // Update the grid for any issue updates since we're filtering by assigned user already
+        Snackbar.Add($"Your assigned issue updated: {issue.ReferenceNumber}", Severity.Info);
+        await _dataGrid.ReloadServerData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnMyIssueStatusChanged(Guid issueId, IssueStatus newStatus)
+    {
+        await _dataGrid.ReloadServerData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}

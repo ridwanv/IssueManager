@@ -1,0 +1,348 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetLinkedIssues
+@using CleanArchitecture.Blazor.Application.Features.Issues.Commands.UnlinkIssues
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Server.UI.Components.Dialogs
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject IDialogService DialogService
+
+<MudCard Class="mb-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <div class="d-flex align-center justify-space-between">
+                <MudText Typo="Typo.h6">@L["Linked Issues"]</MudText>
+                @if (LinkedIssues?.TotalLinkedCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">
+                        @LinkedIssues.TotalLinkedCount @L["linked"]
+                    </MudChip>
+                }
+                @if (CanEdit)
+                {
+                    <MudButton Variant="Variant.Text"
+                               Size="Size.Small"
+                               StartIcon="Icons.Material.Filled.Link"
+                               OnClick="OpenLinkDialog"
+                               Color="Color.Primary">
+                        @L["Link Issue"]
+                    </MudButton>
+                }
+            </div>
+        </CardHeaderContent>
+    </MudCardHeader>
+    
+    <MudCardContent>
+        @if (_loading)
+        {
+            <div class="d-flex justify-center align-center pa-4">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+            </div>
+        }
+        else if (LinkedIssues?.TotalLinkedCount == 0)
+        {
+            <div class="text-center py-4">
+                <MudIcon Icon="Icons.Material.Outlined.LinkOff" Size="Size.Large" Color="Color.Secondary" Class="mb-2" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @L["No linked issues found"]
+                </MudText>
+                @if (CanEdit)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                        @L["Click 'Link Issue' to connect related issues"]
+                    </MudText>
+                }
+            </div>
+        }
+        else
+        {
+            <MudStack>
+                <!-- Parent Issues (issues this one is linked FROM) -->
+                @if (LinkedIssues.ParentLinks.Any())
+                {
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">
+                            <MudIcon Icon="Icons.Material.Filled.ArrowUpward" Size="Size.Small" Class="mr-1" />
+                            @L["This issue is linked from"]
+                        </MudText>
+                        @foreach (var link in LinkedIssues.ParentLinks)
+                        {
+                            <MudCard Elevation="1" Class="mb-2">
+                                <MudCardContent Class="py-2">
+                                    <div class="d-flex align-center justify-space-between">
+                                        <div class="d-flex align-center gap-3 flex-grow-1">
+                                            <MudChip T="string" 
+                                                     Size="Size.Small" 
+                                                     Color="@GetLinkTypeColor(link.LinkType)"
+                                                     Icon="@GetLinkTypeIcon(link.LinkType)">
+                                                @GetLinkTypeText(link.LinkType)
+                                            </MudChip>
+                                            <div class="flex-grow-1">
+                                                <MudLink Href="@($"/issues/{link.RelatedIssue.Id}")" 
+                                                         Typo="Typo.subtitle2" 
+                                                         Color="Color.Primary">
+                                                    #{link.RelatedIssue.ReferenceNumber}
+                                                </MudLink>
+                                                <MudText Typo="Typo.body2">@link.RelatedIssue.Title</MudText>
+                                                <div class="d-flex align-center gap-2 mt-1">
+                                                    <IssueStatusBadge Status="link.RelatedIssue.Status" Size="Size.Small" />
+                                                    <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(link.RelatedIssue.Priority)">
+                                                        @link.RelatedIssue.Priority
+                                                    </MudChip>
+                                                </div>
+                                            </div>
+                                            @if (link.ConfidenceScore.HasValue)
+                                            {
+                                                <MudTooltip Text="@L["AI Similarity Confidence"]">
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">
+                                                        @($"{link.ConfidenceScore.Value:P0}")
+                                                    </MudChip>
+                                                </MudTooltip>
+                                            }
+                                        </div>
+                                        @if (CanEdit)
+                                        {
+                                            <MudIconButton Icon="Icons.Material.Filled.LinkOff"
+                                                           Size="Size.Small"
+                                                           Color="Color.Error"
+                                                           OnClick="() => ConfirmUnlink(link.Id, link.RelatedIssue.ReferenceNumber)"
+                                                           Title="@L["Unlink Issue"]" />
+                                        }
+                                    </div>
+                                    @if (link.CreatedBySystem && !string.IsNullOrEmpty(link.Metadata))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                                            <MudIcon Icon="Icons.Material.Filled.AutoAwesome" Size="Size.Small" Class="mr-1" />
+                                            @L["Automatically detected by AI"]
+                                        </MudText>
+                                    }
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </div>
+                    <MudDivider Class="my-3" />
+                }
+
+                <!-- Child Issues (issues linked TO this one) -->
+                @if (LinkedIssues.ChildLinks.Any())
+                {
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">
+                            <MudIcon Icon="Icons.Material.Filled.ArrowDownward" Size="Size.Small" Class="mr-1" />
+                            @L["Linked issues"]
+                        </MudText>
+                        @foreach (var link in LinkedIssues.ChildLinks)
+                        {
+                            <MudCard Elevation="1" Class="mb-2">
+                                <MudCardContent Class="py-2">
+                                    <div class="d-flex align-center justify-space-between">
+                                        <div class="d-flex align-center gap-3 flex-grow-1">
+                                            <MudChip T="string" 
+                                                     Size="Size.Small" 
+                                                     Color="@GetLinkTypeColor(link.LinkType)"
+                                                     Icon="@GetLinkTypeIcon(link.LinkType)">
+                                                @GetLinkTypeText(link.LinkType)
+                                            </MudChip>
+                                            <div class="flex-grow-1">
+                                                <MudLink Href="@($"/issues/{link.RelatedIssue.Id}")" 
+                                                         Typo="Typo.subtitle2" 
+                                                         Color="Color.Primary">
+                                                    #{link.RelatedIssue.ReferenceNumber}
+                                                </MudLink>
+                                                <MudText Typo="Typo.body2">@link.RelatedIssue.Title</MudText>
+                                                <div class="d-flex align-center gap-2 mt-1">
+                                                    <IssueStatusBadge Status="link.RelatedIssue.Status" Size="Size.Small" />
+                                                    <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(link.RelatedIssue.Priority)">
+                                                        @link.RelatedIssue.Priority
+                                                    </MudChip>
+                                                </div>
+                                            </div>
+                                            @if (link.ConfidenceScore.HasValue)
+                                            {
+                                                <MudTooltip Text="@L["AI Similarity Confidence"]">
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">
+                                                        @($"{link.ConfidenceScore.Value:P0}")
+                                                    </MudChip>
+                                                </MudTooltip>
+                                            }
+                                        </div>
+                                        @if (CanEdit)
+                                        {
+                                            <MudIconButton Icon="Icons.Material.Filled.LinkOff"
+                                                           Size="Size.Small"
+                                                           Color="Color.Error"
+                                                           OnClick="() => ConfirmUnlink(link.Id, link.RelatedIssue.ReferenceNumber)"
+                                                           Title="@L["Unlink Issue"]" />
+                                        }
+                                    </div>
+                                    @if (link.CreatedBySystem && !string.IsNullOrEmpty(link.Metadata))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                                            <MudIcon Icon="Icons.Material.Filled.AutoAwesome" Size="Size.Small" Class="mr-1" />
+                                            @L["Automatically detected by AI"]
+                                        </MudText>
+                                    }
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </div>
+                }
+
+                <!-- Impact Summary -->
+                @if (LinkedIssues.ImpactSummary.AffectedUserCount > 1)
+                {
+                    <MudDivider Class="my-3" />
+                    <IssueImpactSummary Impact="LinkedIssues.ImpactSummary" />
+                }
+            </MudStack>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public Guid IssueId { get; set; }
+    [Parameter] public bool CanEdit { get; set; } = false;
+    [Parameter] public EventCallback OnLinkedIssuesUpdated { get; set; }
+    
+    private LinkedIssuesDto? LinkedIssues;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLinkedIssues();
+    }
+
+    private async Task LoadLinkedIssues()
+    {
+        _loading = true;
+        try
+        {
+            var result = await Mediator.Send(new GetLinkedIssuesQuery 
+            { 
+                IssueId = IssueId,
+                IncludeDetails = true 
+            });
+            
+            if (result.Succeeded)
+            {
+                LinkedIssues = result.Data;
+            }
+            else
+            {
+                Snackbar.Add(result.Errors.FirstOrDefault() ?? L["Failed to load linked issues"], Severity.Warning);
+                LinkedIssues = new LinkedIssuesDto { IssueId = IssueId };
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error loading linked issues"]}: {ex.Message}", Severity.Warning);
+            LinkedIssues = new LinkedIssuesDto { IssueId = IssueId };
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenLinkDialog()
+    {
+        var parameters = new DialogParameters<LinkIssueDialog>
+        {
+            { x => x.CurrentIssueId, IssueId }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            CloseButton = true
+        };
+
+        var dialog = DialogService.Show<LinkIssueDialog>(L["Link Issue"], parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadLinkedIssues();
+            await OnLinkedIssuesUpdated.InvokeAsync();
+        }
+    }
+
+    private async Task ConfirmUnlink(Guid linkId, string issueReference)
+    {
+        var parameters = new DialogParameters<ConfirmationDialog>
+        {
+            { x => x.ContentText, L["Are you sure you want to unlink issue #{0}? This action cannot be undone.", issueReference] }
+        };
+
+        var dialog = DialogService.Show<ConfirmationDialog>(L["Confirm Unlink"], parameters);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await UnlinkIssue(linkId);
+        }
+    }
+
+    private async Task UnlinkIssue(Guid linkId)
+    {
+        try
+        {
+            var result = await Mediator.Send(new UnlinkIssuesCommand { IssueLinkId = linkId });
+            
+            if (result.Succeeded)
+            {
+                Snackbar.Add(L["Issue unlinked successfully"], Severity.Success);
+                await LoadLinkedIssues();
+                await OnLinkedIssuesUpdated.InvokeAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Errors.FirstOrDefault() ?? L["Failed to unlink issue"], Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error unlinking issue"]}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Color GetLinkTypeColor(IssueLinkType linkType) => linkType switch
+    {
+        IssueLinkType.Duplicate => Color.Warning,
+        IssueLinkType.Related => Color.Info,
+        IssueLinkType.Blocks => Color.Error,
+        IssueLinkType.CausedBy => Color.Secondary,
+        IssueLinkType.PartOf => Color.Primary,
+        _ => Color.Default
+    };
+
+    private static string GetLinkTypeIcon(IssueLinkType linkType) => linkType switch
+    {
+        IssueLinkType.Duplicate => Icons.Material.Filled.ContentCopy,
+        IssueLinkType.Related => Icons.Material.Filled.Link,
+        IssueLinkType.Blocks => Icons.Material.Filled.Block,
+        IssueLinkType.CausedBy => Icons.Material.Filled.ArrowForward,
+        IssueLinkType.PartOf => Icons.Material.Filled.Category,
+        _ => Icons.Material.Filled.Link
+    };
+
+    private string GetLinkTypeText(IssueLinkType linkType) => linkType switch
+    {
+        IssueLinkType.Duplicate => L["Duplicate"],
+        IssueLinkType.Related => L["Related"],
+        IssueLinkType.Blocks => L["Blocks"],
+        IssueLinkType.CausedBy => L["Caused By"],
+        IssueLinkType.PartOf => L["Part Of"],
+        _ => L["Linked"]
+    };
+
+    private static Color GetPriorityColor(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => Color.Error,
+        IssuePriority.High => Color.Warning,
+        IssuePriority.Medium => Color.Info,
+        IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+}

@@ -1,4 +1,5 @@
 <Solution>
+  <Folder Name="/Database/" />
   <Folder Name="/Docs/">
     <File Path=".github/workflows/copilot-instructions.md" />
     <File Path="docs/prd.md" />

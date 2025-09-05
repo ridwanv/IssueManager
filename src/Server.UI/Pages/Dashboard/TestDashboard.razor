@@ -1,0 +1,132 @@
+@page "/test-dashboard"
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetDashboardMetrics
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+
+<PageTitle>Test Dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Dashboard Debug Test</MudText>
+    
+    <!-- Debug Information -->
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6">Debug Information</MudText>
+        <MudText>Loading: @_loading</MudText>
+        <MudText>Metrics Loaded: @(_dashboardMetrics != null ? "Yes" : "No")</MudText>
+        <MudText>Performance Stats Loaded: @(_performanceStats != null ? "Yes" : "No")</MudText>
+        <MudText>Last Error: @_lastError</MudText>
+        
+        @if (_dashboardMetrics != null)
+        {
+            <MudText>Total Open Issues: @_dashboardMetrics.TotalOpenIssues</MudText>
+            <MudText>Critical Issues: @_dashboardMetrics.CriticalIssues</MudText>
+            <MudText>New Issues (24h): @_dashboardMetrics.NewIssuesLast24Hours</MudText>
+        }
+    </MudPaper>
+
+    <!-- Simple Chart Test -->
+    @if (_performanceStats?.DailyVolumeChart?.Any() == true)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-4">Simple Chart Test</MudText>
+            
+            <div style="height: 300px;">
+                <MudChart ChartType="ChartType.Line" 
+                          ChartSeries="@GetSimpleChartData()" 
+                          XAxisLabels="@GetSimpleLabels()"
+                          Width="100%" Height="300px" />
+            </div>
+        </MudPaper>
+    }
+
+    <!-- Raw Data Display -->
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudText Typo="Typo.h6">Raw Data</MudText>
+        @if (_performanceStats?.DailyVolumeChart != null)
+        {
+            <MudText>Daily Volume Chart Data Points: @_performanceStats.DailyVolumeChart.Count</MudText>
+            
+            @foreach (var point in _performanceStats.DailyVolumeChart.Take(5))
+            {
+                <MudText Typo="Typo.caption">@point.Label: @point.Value</MudText>
+            }
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private bool _loading = true;
+    private string _lastError = "";
+    private DashboardMetricsDto? _dashboardMetrics;
+    private PerformanceStatsDto? _performanceStats;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            // Load dashboard metrics
+            var metricsQuery = new GetDashboardMetricsQuery();
+            var metricsResult = await Mediator.Send(metricsQuery);
+            if (metricsResult.Succeeded)
+            {
+                _dashboardMetrics = metricsResult.Data;
+                _lastError = "";
+            }
+            else
+            {
+                _lastError = $"Metrics failed: {string.Join(", ", metricsResult.Errors)}";
+            }
+
+            // Load performance stats
+            var statsQuery = new GetPerformanceStatsQuery(30);
+            var statsResult = await Mediator.Send(statsQuery);
+            if (statsResult.Succeeded)
+            {
+                _performanceStats = statsResult.Data;
+            }
+            else
+            {
+                _lastError += $" Stats failed: {string.Join(", ", statsResult.Errors)}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _lastError = $"Exception: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private List<ChartSeries> GetSimpleChartData()
+    {
+        if (_performanceStats?.DailyVolumeChart == null) return new();
+        
+        return new List<ChartSeries>
+        {
+            new ChartSeries
+            {
+                Name = "Issues",
+                Data = _performanceStats.DailyVolumeChart.Select(d => d.Value).ToArray()
+            }
+        };
+    }
+
+    private string[] GetSimpleLabels()
+    {
+        if (_performanceStats?.DailyVolumeChart == null) return Array.Empty<string>();
+        
+        return _performanceStats.DailyVolumeChart.Select(d => d.Label).ToArray();
+    }
+}

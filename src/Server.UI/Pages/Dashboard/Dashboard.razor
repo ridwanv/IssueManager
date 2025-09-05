@@ -1,362 +1,276 @@
 ﻿@page "/"
 @using CleanArchitecture.Blazor.Server.UI.Pages.Dashboard.Components
-@using MudBlazor.Utilities
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetDashboardMetrics
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetRecentActivity  
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using CleanArchitecture.Blazor.Server.UI.Components.Security
+@using CleanArchitecture.Blazor.Domain.Enums
+@using DashboardFiltersModel = CleanArchitecture.Blazor.Server.UI.Models.DashboardFiltersModel
+@implements IAsyncDisposable
+
 @inject IStringLocalizer<Dashboard> L
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+
 <PageTitle>@Title</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large">
-    <div class="@ContentClassNames">
-        <MudPaper Class="pa-4 mb-3">
-            <style>
-               
-                .circle {
-                    width: 0.5rem;
-                    height: 0.5rem;
-                    display: inline-block;
-                }
-
-                .rounded-circle{
-                    border-radius: 50%;
-                }
-                .bg-success {
-                    background-color: #28a745 !important;
-                }
-                .bg-warning {
-                    background-color: #ffc107 !important;
-                }
-
-                .bg-primary {
-                    background-color: #0d6efd !important;
-                }
-
-                .bg-danger {
-                    background-color: #dc3545 !important;
-                }
-
-                .bg-secondary {
-                    background-color: #6c757d !important;
-                }
-
-                .bg-dark {
-                    background-color: #343a40 !important;
-                }
-
-                .bar-label {
-                    font-size: .625rem;
-                    color: #6c757d;
-                }
-
-                .text-nowrap {
-                    white-space: nowrap;
-                }
-
-                .fw-semibold {
-                    font-weight: 600;
-                }
-
-                .small, small {
-                    font-size: .875em;
-                }
-
-                .progress {
-                    background-color: #e9ecef;
-                    border-radius: 0.25rem;
-                    overflow: hidden;
-                    height: 8px;
-                    display: flex;
-                }
-
-                .progress-bar {
-                    height: 100%;
-                    transition: width 0.6s ease;
-                }
-                @@media (max-width: 850px) {
-                    .flex-row
-
-                {
-                    flex-wrap: wrap;
-                }
-
-                }
-
-                .fw-bold {
-                    font-weight: 700 !important;
-                }
-
-                .fs-5 {
-                    font-size: 1.25rem !important;
-                }
-            </style>
-            <div class="d-flex flex-row gap-3">
-                <div class="d-flex flex-column">
-                    <div class="text-muted text-nowrap small">Invoiced amount</div>
-                    <div class="fs-5 fw-bold text-nowrap">1,167,986 EUR</div>
-                </div>
-                <div class="d-flex flex-column flex-grow-1 gap-3">
-                    <div class="d-flex flex-row flex-grow-1">
-                        <div class="d-flex flex-column justify-content-between align-center mt-2 flex-grow-1">
-                            <div class="d-flex align-center gap-2">
-                                <div class="circle bg-success rounded-circle" ></div>
-                                <span class="bar-label text-nowrap">Paid in full</span>
-                            </div>
-                            <div class="text-nowrap fw-semibold small">789,238 EUR</div>
-                        </div>
-                        <div class="d-flex flex-column justify-content-between align-center mt-2 flex-grow-1">
-                            <div class="d-flex align-center gap-2">
-                                <div class="circle bg-primary rounded-circle" ></div>
-                                <span class="bar-label text-nowrap">Awaiting payment</span>
-                            </div>
-                            <div class="text-nowrap fw-semibold small">244,900 EUR</div>
-                        </div>
-                        <div class="d-flex flex-column justify-content-between align-center mt-2 flex-grow-1">
-                            <div class="d-flex align-center gap-2">
-                                <div class="circle bg-warning rounded-circle" ></div>
-                                <span class="bar-label text-nowrap">Overdue 1-6 days</span>
-                            </div>
-                            <div class="text-nowrap fw-semibold small">74,808 EUR</div>
-                        </div>
-                        <div class="d-flex flex-column justify-content-between align-center mt-2 flex-grow-1">
-                            <div class="d-flex align-center gap-2">
-                                <div class="circle bg-danger rounded-circle" ></div>
-                                <span class="bar-label text-nowrap">Overdue 7-13 days</span>
-                            </div>
-                            <div class="text-nowrap fw-semibold small">32,221 EUR</div>
-                        </div>
-                        <div class="d-flex flex-column justify-content-between align-center mt-2 flex-grow-1">
-                            <div class="d-flex align-center gap-2">
-                                <div class="circle bg-secondary rounded-circle" ></div>
-                                <span class="bar-label text-nowrap">Overdue 14-29 days</span>
-                            </div>
-                            <div class="text-nowrap fw-semibold small">17,338 EUR</div>
-                        </div>
-                        <div class="d-flex flex-column justify-content-between align-center mt-2 flex-grow-1">
-                            <div class="d-flex align-center gap-2">
-                                <div class="circle bg-dark rounded-circle" ></div>
-                                <span class="bar-label text-nowrap">Overdue 30 days or more</span>
-                            </div>
-                            <div class="text-nowrap fw-semibold small">9,481 EUR</div>
-                        </div>
-                    </div>
-                    <div class="progress bg-body mb-2" style="height: 8px;">
-                        <div class="progress-bar bg-success" role="progressbar" style="width: 68%;" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100"></div>
-                        <div class="progress-bar bg-primary" role="progressbar" style="width: 21%;" aria-valuenow="21" aria-valuemin="0" aria-valuemax="100"></div>
-                        <div class="progress-bar bg-warning" role="progressbar" style="width: 6%;" aria-valuenow="6" aria-valuemin="0" aria-valuemax="100"></div>
-                        <div class="progress-bar bg-danger" role="progressbar" style="width: 3%;" aria-valuenow="3" aria-valuemin="0" aria-valuemax="100"></div>
-                        <div class="progress-bar bg-secondary" role="progressbar" style="width: 1%;" aria-valuenow="1" aria-valuemin="0" aria-valuemax="100"></div>
-                        <div class="progress-bar bg-dark" role="progressbar" style="width: 1%;" aria-valuenow="1" aria-valuemin="0" aria-valuemax="100"></div>
-                    </div>
-                </div>
-               
-            </div>
-   
-     
-   
-</MudPaper>
-        <div class="lp-app-grid">
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudStack Spacing="4">
+        <!-- Dashboard Header -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+                <MudIcon Icon="@Icons.Material.Filled.Dashboard" Color="Color.Primary" Size="Size.Large" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h4" Class="font-weight-bold">@L["Issue Management Dashboard"]</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        @L["Real-time overview of your issue management system"]
+                    </MudText>
+                </MudStack>
+            </MudStack>
             
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                @if (_lastRefreshed.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Class="text-muted">
+                        @L["Updated: {0}", _lastRefreshed.Value.ToString("HH:mm:ss")]
+                    </MudText>
+                }
+                <MudButton Variant="Variant.Outlined" 
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Refresh"
+                          OnClick="RefreshDashboard"
+                          Disabled="@_loading"
+                          Size="Size.Small">
+                    @(_loading ? L["Refreshing..."] : L["Refresh"])
+                </MudButton>
+            </MudStack>
+        </MudStack>
 
-            <MudPaper Class="py-4 px-6 rounded-lg d-flex align-center">
-                <div class="flex-grow-1">
-                    <MudText Typo="Typo.h6">@L["Graphite on roof"]</MudText>
-                    <div class="d-flex align-center my-1">
-                        <MudAvatar Class="me-2 pa-4" Style="background-color: var(--mud-palette-primary-hover);" Size="Size.Small">
-                            <MudIcon Color="Color.Error" Icon="@Icons.Material.Filled.TrendingDown" Size="Size.Small"/>
-                        </MudAvatar>
-                        <MudText Typo="Typo.subtitle2">+2.6%</MudText>
-                    </div>
-                    <MudText Typo="Typo.h4">149,567</MudText>
-                </div>
-                <div class="d-flex align-end justify-end mud-height-full py-8">
-                    <MudPaper Height="80%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="95%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="90%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="85%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="65%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="52%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="40%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="38%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="36%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                    <MudPaper Height="20%" Width="6px" Square="true" Class="mud-primary mr-1 rounded-t"/>
-                </div>
-            </MudPaper>
-            <MudPaper Class="py-4 px-6 rounded-lg d-flex align-center">
-                <div class="flex-grow-1">
-                    <MudText Typo="Typo.h6">@L["Global Spread"]</MudText>
-                    <div class="d-flex align-center my-1">
-                        <MudAvatar Class="me-2 pa-4" Style="background-color: var(--mud-palette-secondary-hover);" Size="Size.Small">
-                            <MudIcon Color="Color.Primary" Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small"/>
-                        </MudAvatar>
-                        <MudText Typo="Typo.subtitle2">+9.6%</MudText>
-                    </div>
-                    <MudText Typo="Typo.h4">12%</MudText>
-                </div>
-                <div class="d-flex align-end justify-end mud-height-full py-8">
-                    <MudPaper Height="15%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="20%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="53%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="35%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="45%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="70%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="58%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="76%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="85%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                    <MudPaper Height="61%" Width="6px" Square="true" Class="mud-secondary mr-1 rounded-t"/>
-                </div>
-            </MudPaper>
-            <MudPaper Class="py-4 px-6 rounded-lg d-flex align-center">
-                <div class="flex-grow-1">
-                    <MudText Typo="Typo.h6">@L["Roentgen"]</MudText>
-                    <div class="d-flex align-center my-1">
-                        <MudAvatar Class="me-2 pa-4" Style="background-color: var(--mud-palette-tertiary-hover);" Size="Size.Small">
-                            <MudIcon Color="Color.Tertiary" Icon="@Icons.Material.Filled.TrendingFlat" Size="Size.Small"/>
-                        </MudAvatar>
-                        <MudText Typo="Typo.subtitle2">~0.0%</MudText>
-                    </div>
-                    <MudText Typo="Typo.h4">3,6</MudText>
-                </div>
-                <div class="d-flex align-end justify-end mud-height-full py-8">
-                    <MudPaper Height="10%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="16%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="26%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="36%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="36%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="28%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="36%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="36%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="28%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                    <MudPaper Height="36%" Width="6px" Square="true" Class="mud-tertiary mr-1 rounded-t"/>
-                </div>
-            </MudPaper>
-        </div>
-        <div class="my-6 d-flex gap-6 flex-wrap">
-            <MudPaper Class="py-4 px-6 rounded-lg d-flex flex-column">
-                <MudText Typo="Typo.h6">@L["Uranium-235"]</MudText>
-                <div class="d-flex align-center gap-4">
-                    <MudRating ReadOnly="true" SelectedValue="4"/>
-                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["See all 137 reviews"]</MudText>
-                </div>
-                <MudText>@L["This is the type of uranium used in the RBMK reactors"]</MudText>
-                <MudDivider Class="my-3"/>
-                <MudText Typo="Typo.subtitle2" GutterBottom="true">@L["Reactor Type"]</MudText>
-                <div class="mx-n2 mb-2">
-                    <MudChip T="string" Color="Color.Primary">RBMK-1000</MudChip>
-                    <MudChip Color="Color.Secondary" T="string">RBMK-1500</MudChip>
-                    <MudChip  Color="Color.Tertiary" T="string">RBMKP-2400</MudChip>
-                </div>
-                <div>
-                    <MudButton Variant="Variant.Text" Color="Color.Primary" Class="ml-n2 mb-n2">@L["Read More"]</MudButton>
-                </div>
-            </MudPaper>
-            @if (IsMobile == false)
-            {
-                <MudSimpleTable Dense="true" Hover="true" Class="flex-grow-1">
-                    <thead>
-                        <tr>
-                            <th>@L["Nr"]</th>
-                            <th>@L["Sign"]</th>
-                            <th>@L["Name"]</th>
-                            <th>@L["Position"]</th>
-                            <th>@L["Molar mass"]</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in Elements)
-                        {
-                            <tr>
-                                <td>@item.Number</td>
-                                <td>@item.Sign</td>
-                                <td>@item.Name</td>
-                                <td>@item.Position</td>
-                                <td>@item.Molar</td>
-                            </tr>
-                        }
-                    </tbody>
-                </MudSimpleTable>
-            }
-        </div>
-    </div>
+@*         <!-- Dashboard Filters -->
+        <DashboardFilters Filters="_filters" 
+                         FiltersChanged="OnFiltersChanged"
+                         AutoRefreshChanged="OnAutoRefreshChanged" /> *@
 
-    <LandingSection StraightEnd="true" SectionClass="dark-section-text" BackgroundClass="mud-dark">
-        <MudText Typo="Typo.h3" Align="Align.Center" Class="mt-16 mb-8">“Never had such a good time making a site“</MudText>
-         <Carousel />
-    </LandingSection>
+        <!-- Loading State -->
+        @if (_loading && _dashboardMetrics == null)
+        {
+            <MudStack Spacing="3">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="150px" />
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="300px" />
+            </MudStack>
+        }
+        else
+        {
+            <!-- KPI Metrics Cards -->
+            <IssueMetricsCard Metrics="_dashboardMetrics" />
 
-    <MudText Typo="Typo.h1">H1 Title</MudText>
-    <MudText Typo="Typo.h2">H2 Title</MudText>
-    <MudText Typo="Typo.h3">H3 Title</MudText>
-    <MudText Typo="Typo.h4">H4 Title</MudText>
-    <MudText Typo="Typo.h5">H5 Title</MudText>
-    <MudText Typo="Typo.h6">H6 Title</MudText>
+            <!-- Main Dashboard Grid - Simplified -->
+            <MudGrid>
+                <MudItem xs="12" md="8">
+                    <IssueStatusBoard Metrics="_dashboardMetrics" OnRefreshClick="RefreshDashboard" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <RealTimeActivityFeed OnViewIssue="ViewIssueDetails" />
+                </MudItem>
+            </MudGrid>
+        }
 
-    <MudText Typo="Typo.subtitle1"> Subtitle1 Blazor</MudText>
-    <MudText Typo="Typo.subtitle2"> Subtitle2 Blazor</MudText>
-    <MudText Typo="Typo.button">Button Text</MudText>
-
-    <MudText Typo="Typo.body1"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.body2"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.overline"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.caption"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-
-    <MudText Typo="Typo.body1" Class="mud-secondary-text"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.body1" Class="mud-primary-text"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.body1" Class="mud-error-text"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.body1" Class="mud-info-text"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.body1" Class="mud-warning-text"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.body1" Class="mud-dark-text"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
-    <MudText Typo="Typo.body1" Class="mud-tertiary-text"> Here we add each class to the divs to change the background color, text color and both background and text color with one class only. </MudText>
+        <!-- Footer -->
+        <MudDivider Class="my-4" />
+        <MudStack Row Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info" />
+            <MudText Typo="Typo.caption" Class="text-muted">
+                @L["Dashboard data is refreshed every {0} when auto-refresh is enabled", "30 seconds"]
+            </MudText>
+        </MudStack>
+    </MudStack>
 </MudContainer>
 
-<style>
-    .lp-app-grid {
-        display: grid;
-        gap: 24px;
-        grid-template-columns: repeat(auto-fit,minmax(300px,1fr));
-    }
-</style>
-
-
-@code
-{
-    private readonly bool IsMobile = false;
-
+@code {
     public string Title { get; set; } = "Dashboard";
 
+    private DashboardMetricsDto? _dashboardMetrics;
+    private PerformanceStatsDto? _performanceStats;
+    private DashboardFiltersModel _filters = new();
+    private bool _loading = true;
+    private DateTime? _lastRefreshed;
+    private Timer? _refreshTimer;
+    private readonly int _refreshIntervalMs = 30000; // 30 seconds
 
-    protected string ContentClassNames => new CssBuilder("flex-grow-1 flex-shrink-1")
-        .AddClass("pa-5", !IsMobile)
-        .AddClass("px-8", IsMobile)
-        .Build();
-
-
-
-    private readonly IEnumerable<Element> Elements = new List<Element>
+    protected override async Task OnInitializedAsync()
     {
-        new() { Number = 1, Sign = "H", Name = "Hydrogen", Position = 0, Molar = 1.00794 },
-        new() { Number = 2, Sign = "He", Name = "Helium", Position = 17, Molar = 4.002602 },
-        new() { Number = 3, Sign = "Li", Name = "Lithium", Position = 0, Molar = 6.941 },
-        new() { Number = 4, Sign = "Be", Name = "Beryllium", Position = 1, Molar = 9.012182 },
-        new() { Number = 5, Sign = "C", Name = "Carbon", Position = 13, Molar = 12.0107 },
-        new() { Number = 6, Sign = "O", Name = "Oxygen", Position = 15, Molar = 15.9994 }
-    };
-
-    public class Element
-    {
-        public string? Group { get; set; }
-        public int Position { get; set; }
-        public string? Name { get; set; }
-        public int Number { get; set; }
-
-        public string? Sign { get; set; }
-        public double Molar { get; set; }
-
-        public override string ToString()
+        try
         {
-            return $"{Sign} - {Name}";
+            Title = L?["Issue Management Dashboard"] ?? "Issue Management Dashboard";
+            await LoadDashboardData();
+            // Only start auto refresh if data loaded successfully
+            if (_dashboardMetrics != null || _performanceStats != null)
+            {
+                StartAutoRefresh();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Ensure the component renders even if initialization fails
+            Snackbar?.Add($"Dashboard initialization warning: {ex.Message}", Severity.Warning);
         }
     }
 
-    protected override void OnInitialized()
+    private async Task LoadDashboardData()
     {
-        Title = L["Dashboard"];
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            // Load dashboard metrics
+            var metricsQuery = new GetDashboardMetricsQuery();
+            var metricsResult = await Mediator.Send(metricsQuery);
+            if (metricsResult.Succeeded)
+            {
+                _dashboardMetrics = metricsResult.Data;
+            }
+
+            // Load performance stats  
+            var statsQuery = new GetPerformanceStatsQuery(GetDaysFromTimeRange(_filters.TimeRange));
+            var statsResult = await Mediator.Send(statsQuery);
+            if (statsResult.Succeeded)
+            {
+                _performanceStats = statsResult.Data;
+            }
+
+            _lastRefreshed = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            // Don't crash the component, just show a warning
+            Snackbar?.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshDashboard()
+    {
+        await LoadDashboardData();
+    }
+
+    private async Task OnFiltersChanged(DashboardFiltersModel newFilters)
+    {
+        _filters = newFilters;
+        await LoadDashboardData();
+    }
+
+    private void OnAutoRefreshChanged(bool autoRefresh)
+    {
+        if (autoRefresh)
+        {
+            StartAutoRefresh();
+        }
+        else
+        {
+            StopAutoRefresh();
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        try
+        {
+            if (_filters?.AutoRefresh != true) return;
+
+            _refreshTimer?.Dispose();
+            _refreshTimer = new Timer(async _ =>
+            {
+                try
+                {
+                    await InvokeAsync(LoadDashboardData);
+                }
+                catch (Exception ex)
+                {
+                    // Don't crash the timer
+                    await InvokeAsync(() => Snackbar?.Add($"Auto-refresh failed: {ex.Message}", Severity.Warning));
+                }
+            }, null, _refreshIntervalMs, _refreshIntervalMs);
+        }
+        catch (Exception ex)
+        {
+            Snackbar?.Add($"Auto-refresh setup failed: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private void StopAutoRefresh()
+    {
+        _refreshTimer?.Dispose();
+        _refreshTimer = null;
+    }
+
+    private async Task ViewIssueDetails(Guid issueId)
+    {
+        // Navigate to issue details page
+        // This would typically use Navigation.NavigateTo($"/issues/{issueId}")
+        Snackbar.Add($"Navigating to issue {issueId}", Severity.Info);
+    }
+
+    private int GetDaysFromTimeRange(string timeRange) => timeRange switch
+    {
+        "7d" => 7,
+        "30d" => 30,
+        "90d" => 90,
+        "today" => 1,
+        "yesterday" => 2,
+        "this_week" => 7,
+        "last_week" => 14,
+        _ => 30
+    };
+
+    private string GetPeakHour()
+    {
+        if (_performanceStats?.HourlyDistribution == null || !_performanceStats.HourlyDistribution.Any())
+            return "--:--";
+            
+        var peakHour = _performanceStats.HourlyDistribution
+            .OrderByDescending(h => h.Value)
+            .FirstOrDefault();
+            
+        return peakHour?.Label ?? "--:--";
+    }
+
+    private string GetTopCategory()
+    {
+        if (_dashboardMetrics?.CategoryDistribution == null || !_dashboardMetrics.CategoryDistribution.Any())
+            return L["N/A"];
+            
+        var topCategory = _dashboardMetrics.CategoryDistribution
+            .OrderByDescending(kv => kv.Value)
+            .FirstOrDefault();
+            
+        return topCategory.Key.ToString();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        StopAutoRefresh();
+        _refreshTimer?.Dispose();
     }
 }
+
+<style>
+    .font-weight-bold {
+        font-weight: 700;
+    }
+
+    .text-muted {
+        opacity: 0.7;
+    }
+
+    .dashboard-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+    }
+
+
+</style>

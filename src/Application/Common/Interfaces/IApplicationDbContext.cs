@@ -18,8 +18,10 @@ public interface IApplicationDbContext: IAsyncDisposable
     DbSet<Tenant> Tenants { get; set; }
     DbSet<Contact> Contacts { get; set; }
     DbSet<Issue> Issues { get; set; }
+    DbSet<IssueLink> IssueLinks { get; set; }
     DbSet<Attachment> Attachments { get; set; }
     DbSet<EventLog> EventLogs { get; set; }
+    DbSet<InternalNote> InternalNotes { get; set; }
     DbSet<LoginAudit> LoginAudits { get; set; }
     DbSet<UserLoginRiskSummary> UserLoginRiskSummaries { get; set; }
     ChangeTracker ChangeTracker { get; }

@@ -132,7 +132,7 @@
             <CellTemplate>
                 @if (context.Item.Created.HasValue)
                 {
-                    <UtcToLocal DateTime="context.Item.Created.Value" Format="yyyy-MM-dd HH:mm" />
+                    <UtcToLocal UTCDateTime="context.Item.Created.Value" Format="yyyy-MM-dd HH:mm" />
                 }
             </CellTemplate>
         </PropertyColumn>

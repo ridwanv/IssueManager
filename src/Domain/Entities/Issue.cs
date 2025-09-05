@@ -23,6 +23,9 @@ namespace CleanArchitecture.Blazor.Domain.Entities
         public int? ReporterContactId { get; set; }
         public Contact? ReporterContact { get; set; }
         
+        // Assignment information
+        public string? AssignedUserId { get; set; }
+        
         // WhatsApp specific metadata
         public string? SourceMessageIds { get; set; } // JSON array as string
         public string? WhatsAppMetadata { get; set; } // JSON metadata for conversation state
@@ -42,6 +45,11 @@ namespace CleanArchitecture.Blazor.Domain.Entities
         public string TenantId { get; set; } = default!;
         public ICollection<Attachment> Attachments { get; set; } = new List<Attachment>();
         public ICollection<EventLog> EventLogs { get; set; } = new List<EventLog>();
+        public ICollection<InternalNote> InternalNotes { get; set; } = new List<InternalNote>();
+        
+        // Issue linking relationships
+        public ICollection<IssueLink> ChildLinks { get; set; } = new List<IssueLink>(); // Issues linked TO this issue
+        public ICollection<IssueLink> ParentLinks { get; set; } = new List<IssueLink>(); // Issues this issue is linked FROM
 
         /// <summary>
         /// Factory method to create a new Issue from WhatsApp intake data
@@ -79,6 +87,51 @@ namespace CleanArchitecture.Blazor.Domain.Entities
             issue.AddDomainEvent(new IssueCreatedEvent(issue));
             
             return issue;
+        }
+
+        /// <summary>
+        /// Updates the issue status and raises an event
+        /// </summary>
+        public void ChangeStatus(IssueStatus newStatus)
+        {
+            var previousStatus = Status;
+            Status = newStatus;
+            
+            AddDomainEvent(new IssueStatusChangedEvent(this, previousStatus, newStatus));
+            
+            // Raise resolved event if status is resolved or closed
+            if (newStatus == IssueStatus.Resolved || newStatus == IssueStatus.Closed)
+            {
+                AddDomainEvent(new IssueResolvedEvent(this));
+            }
+        }
+
+        /// <summary>
+        /// Assigns the issue to a user and raises an event
+        /// </summary>
+        public void AssignTo(string? userId)
+        {
+            var previousAssignedUserId = AssignedUserId;
+            AssignedUserId = userId;
+            
+            AddDomainEvent(new IssueAssignedEvent(this, previousAssignedUserId, userId));
+        }
+
+        /// <summary>
+        /// Adds a comment to the issue and raises an event
+        /// </summary>
+        public void AddComment(string comment, string addedByUserId)
+        {
+            AddDomainEvent(new IssueCommentAddedEvent(this, comment, addedByUserId));
+        }
+
+        /// <summary>
+        /// Resolves the issue with optional resolution notes
+        /// </summary>
+        public void Resolve(string? resolutionNotes = null)
+        {
+            ChangeStatus(IssueStatus.Resolved);
+            AddDomainEvent(new IssueResolvedEvent(this, resolutionNotes));
         }
     }
 }

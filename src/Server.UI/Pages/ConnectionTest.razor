@@ -1,0 +1,131 @@
+@page "/connection-test"
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Connection Test</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="pa-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudText Typo="Typo.h4" GutterBottom="true">Blazor Server Connection Test</MudText>
+        
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Info">
+                This page tests the Blazor Server SignalR connection. If you can see this page and the counter works, the connection is functioning properly.
+            </MudAlert>
+            
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudCard>
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">Connection Status</MudText>
+                            <MudText Color="@(_isConnected ? Color.Success : Color.Error)">
+                                @(_isConnected ? "✓ Connected" : "✗ Disconnected")
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                
+                <MudItem xs="12" sm="6">
+                    <MudCard>
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">Counter Test</MudText>
+                            <MudText Typo="Typo.h5">@_counter</MudText>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="IncrementCounter">
+                                Click Me
+                            </MudButton>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+            
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">JavaScript Interop Test</MudText>
+                    <MudButton Variant="Variant.Outlined" OnClick="TestJSInterop">Test JS Alert</MudButton>
+                    <MudText Typo="Typo.body2" Class="mt-2">
+                        Last JS Test: @_lastJSTest
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+            
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Connection Info</MudText>
+                    <MudSimpleTable Dense="true">
+                        <tbody>
+                            <tr>
+                                <td><strong>Render Mode:</strong></td>
+                                <td>@GetRenderMode()</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Page Load Time:</strong></td>
+                                <td>@_pageLoadTime</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Component Init:</strong></td>
+                                <td>@_componentInitTime</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudCardContent>
+            </MudCard>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private int _counter = 0;
+    private bool _isConnected = true;
+    private string _lastJSTest = "Not tested";
+    private DateTime _pageLoadTime = DateTime.Now;
+    private DateTime _componentInitTime;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _componentInitTime = DateTime.Now;
+        
+        // Test initial connection
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+            _isConnected = true;
+        }
+        catch
+        {
+            _isConnected = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Console.WriteLine("ConnectionTest: First render completed");
+        }
+    }
+
+    private void IncrementCounter()
+    {
+        _counter++;
+        Console.WriteLine($"Counter incremented to: {_counter}");
+    }
+
+    private async Task TestJSInterop()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "JavaScript interop is working!");
+            _lastJSTest = $"Success at {DateTime.Now:HH:mm:ss}";
+        }
+        catch (Exception ex)
+        {
+            _lastJSTest = $"Failed: {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private string GetRenderMode()
+    {
+        return "Interactive Server";
+    }
+}

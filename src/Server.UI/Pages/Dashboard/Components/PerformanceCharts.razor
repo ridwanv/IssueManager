@@ -1,0 +1,462 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using CleanArchitecture.Blazor.Domain.Enums
+@using DashboardFiltersModel = CleanArchitecture.Blazor.Server.UI.Models.DashboardFiltersModel
+
+<MudGrid>
+    <!-- Daily Volume Trend Chart -->
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Spacing="3">
+                <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">@L["Issue Volume Trend"]</MudText>
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.caption" Class="text-muted">
+                            @L["Last {0} days", PerformanceStats?.PeriodDays ?? 30]
+                        </MudText>
+                        <MudTooltip Text="@L["Refresh Chart"]">
+                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                                          Size="Size.Small" 
+                                          OnClick="OnRefreshClick" />
+                        </MudTooltip>
+                    </MudStack>
+                </MudStack>
+
+                @if (PerformanceStats?.DailyVolumeChart?.Any() == true)
+                {
+                    <div style="height: 300px;">
+                        <MudChart ChartType="ChartType.Line" 
+                                  ChartSeries="@GetDailyVolumeChartData()" 
+                                  XAxisLabels="@GetDailyVolumeLabels()"
+                                  Width="100%" Height="300px"
+                                  ChartOptions="@GetLineChartOptions()" />
+                    </div>
+                }
+                else
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="300px" />
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Hourly Distribution -->
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.h6">@L["Peak Hours Analysis"]</MudText>
+                
+                @if (PerformanceStats?.HourlyDistribution?.Any() == true)
+                {
+                    <div style="height: 300px;">
+                        <MudChart ChartType="ChartType.Bar" 
+                                  ChartSeries="@GetHourlyDistributionChartData()" 
+                                  XAxisLabels="@GetHourlyDistributionLabels()"
+                                  Width="100%" Height="300px"
+                                  ChartOptions="@GetBarChartOptions()" />
+                    </div>
+                }
+                else
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="300px" />
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Resolution Time Metrics -->
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.h6">@L["Resolution Time Analysis"]</MudText>
+                
+                @if (PerformanceStats != null)
+                {
+                    <MudGrid>
+                        <MudItem xs="4">
+                            <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                                <MudIcon Icon="@Icons.Material.Filled.Timeline" Color="Color.Info" Size="Size.Large" />
+                                <MudText Typo="Typo.h4" Color="Color.Info">
+                                    @PerformanceStats.MedianResolutionFormatted
+                                </MudText>
+                                <MudText Typo="Typo.caption" Align="Align.Center">
+                                    @L["Median Resolution Time"]
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                                <MudIcon Icon="@Icons.Material.Filled.Speed" Color="Color.Warning" Size="Size.Large" />
+                                <MudText Typo="Typo.h4" Color="Color.Warning">
+                                    @PerformanceStats.P90ResolutionFormatted
+                                </MudText>
+                                <MudText Typo="Typo.caption" Align="Align.Center">
+                                    @L["90th Percentile"]
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Size="Size.Large" />
+                                <MudText Typo="Typo.h4" Color="Color.Error">
+                                    @PerformanceStats.P95ResolutionFormatted
+                                </MudText>
+                                <MudText Typo="Typo.caption" Align="Align.Center">
+                                    @L["95th Percentile"]
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudDivider />
+
+                    <!-- Resolution Rate Progress -->
+                    <MudStack Spacing="2">
+                        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.body1">@L["Total Resolved Issues"]</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Success">
+                                @PerformanceStats.TotalResolvedIssues.ToString("N0")
+                            </MudText>
+                        </MudStack>
+                        
+                        <MudProgressLinear Color="Color.Success" 
+                                          Value="@GetResolutionProgress()" 
+                                          Size="Size.Medium" 
+                                          Class="my-2" />
+                        
+                        <MudText Typo="Typo.caption" Class="text-muted">
+                            @L["Based on {0}-day period", PerformanceStats.PeriodDays]
+                        </MudText>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Category Performance -->
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.h6">@L["Category Performance"]</MudText>
+                
+                @if (PerformanceStats?.CategoryPerformance?.Any() == true)
+                {
+                    <MudStack Spacing="2">
+                        @foreach (var category in PerformanceStats.CategoryPerformance.OrderByDescending(c => c.TotalIssues))
+                        {
+                            <MudPaper Class="pa-3 category-performance-item" Outlined="true">
+                                <MudStack Spacing="2">
+                                    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudIcon Icon="@GetCategoryIcon(category.Category)" 
+                                                    Color="@GetCategoryColor(category.Category)" />
+                                            <MudText Typo="Typo.body1">
+                                                @GetCategoryDisplayName(category.Category)
+                                            </MudText>
+                                        </MudStack>
+                                        <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+                                            <MudText Typo="Typo.body2" Class="text-muted">
+                                                @category.TotalIssues @L["issues"]
+                                            </MudText>
+                                            <MudText Typo="Typo.body1" Color="Color.Success">
+                                                @category.ResolutionRateFormatted
+                                            </MudText>
+                                        </MudStack>
+                                    </MudStack>
+                                    
+                                    <MudProgressLinear Value="@category.ResolutionRate" 
+                                                      Color="@GetResolutionRateColor(category.ResolutionRate)" 
+                                                      Size="Size.Small" />
+                                    
+                                    @if (category.AverageResolutionHours > 0)
+                                    {
+                                        <MudText Typo="Typo.caption" Class="text-muted">
+                                            @L["Avg resolution: {0}", FormatHours(category.AverageResolutionHours)]
+                                        </MudText>
+                                    }
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
+                }
+                else
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Priority Performance -->
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.h6">@L["Priority Performance"]</MudText>
+                
+                @if (PerformanceStats?.PriorityPerformance?.Any() == true)
+                {
+                    <div style="height: 250px;">
+                        <MudChart ChartType="ChartType.Donut" 
+                                  ChartSeries="@GetPriorityPerformanceChartData()" 
+                                  XAxisLabels="@GetPriorityPerformanceLabels()"
+                                  Width="100%" Height="250px"
+                                  ChartOptions="@GetDonutChartOptions()" />
+                    </div>
+                }
+                else
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="250px" />
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Channel Performance -->
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.h6">@L["Channel Performance"]</MudText>
+                
+                @if (PerformanceStats?.ChannelPerformance?.Any() == true)
+                {
+                    <MudSimpleTable Dense="true" Hover="true">
+                        <thead>
+                            <tr>
+                                <th>@L["Channel"]</th>
+                                <th>@L["Issues"]</th>
+                                <th>@L["Resolution Rate"]</th>
+                                <th>@L["Avg Time"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var channel in PerformanceStats.ChannelPerformance.OrderByDescending(c => c.TotalIssues))
+                            {
+                                <tr>
+                                    <td>
+                                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                            <MudIcon Icon="@GetChannelIcon(channel.Channel)" Size="Size.Small" />
+                                            @channel.Channel
+                                        </MudStack>
+                                    </td>
+                                    <td>@channel.TotalIssues</td>
+                                    <td>
+                                        <MudChip T="string" Size="Size.Small" 
+                                                Color="@GetResolutionRateColor(channel.ResolutionRate)">
+                                            @channel.ResolutionRateFormatted
+                                        </MudChip>
+                                    </td>
+                                    <td class="text-muted">@FormatHours(channel.AverageResolutionHours)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+                else
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<style>
+    .category-performance-item {
+        border-radius: 8px;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .category-performance-item:hover {
+        transform: translateX(4px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .text-muted {
+        opacity: 0.7;
+    }
+</style>
+
+@code {
+    [Parameter] public PerformanceStatsDto? PerformanceStats { get; set; }
+    [Parameter] public EventCallback OnRefreshClick { get; set; }
+    [Inject] private IStringLocalizer<PerformanceCharts> L { get; set; } = default!;
+
+    // Chart Data Methods
+    private List<ChartSeries> GetDailyVolumeChartData()
+    {
+        if (PerformanceStats?.DailyVolumeChart == null) return new();
+        
+        return new List<ChartSeries>
+        {
+            new ChartSeries
+            {
+                Name = L["Issues Created"].ToString(),
+                Data = PerformanceStats.DailyVolumeChart.Select(d => d.Value).ToArray()
+            }
+        };
+    }
+
+    private string[] GetDailyVolumeLabels()
+    {
+        if (PerformanceStats?.DailyVolumeChart == null) return Array.Empty<string>();
+        
+        return PerformanceStats.DailyVolumeChart.Select(d => d.Label).ToArray();
+    }
+
+    private List<ChartSeries> GetHourlyDistributionChartData()
+    {
+        if (PerformanceStats?.HourlyDistribution == null) return new();
+        
+        return new List<ChartSeries>
+        {
+            new ChartSeries
+            {
+                Name = L["Issues"].ToString(),
+                Data = PerformanceStats.HourlyDistribution.Select(h => h.Value).ToArray()
+            }
+        };
+    }
+
+    private string[] GetHourlyDistributionLabels()
+    {
+        if (PerformanceStats?.HourlyDistribution == null) return Array.Empty<string>();
+        
+        return PerformanceStats.HourlyDistribution.Select(h => h.Label).ToArray();
+    }
+
+    private List<ChartSeries> GetPriorityPerformanceChartData()
+    {
+        if (PerformanceStats?.PriorityPerformance == null) return new();
+        
+        return new List<ChartSeries>
+        {
+            new ChartSeries
+            {
+                Name = L["Issues by Priority"].ToString(),
+                Data = PerformanceStats.PriorityPerformance
+                    .OrderByDescending(p => (int)p.Priority)
+                    .Select(p => (double)p.TotalIssues)
+                    .ToArray()
+            }
+        };
+    }
+
+    private string[] GetPriorityPerformanceLabels()
+    {
+        if (PerformanceStats?.PriorityPerformance == null) return Array.Empty<string>();
+        
+        return PerformanceStats.PriorityPerformance
+            .OrderByDescending(p => (int)p.Priority)
+            .Select(p => GetPriorityDisplayName(p.Priority))
+            .ToArray();
+    }
+
+    // Chart Options
+    private ChartOptions GetLineChartOptions()
+    {
+        return new ChartOptions
+        {
+            YAxisLines = true,
+            XAxisLines = false,
+        };
+    }
+
+    private ChartOptions GetBarChartOptions()
+    {
+        return new ChartOptions
+        {
+            YAxisLines = true,
+            XAxisLines = false,
+        };
+    }
+
+    private ChartOptions GetDonutChartOptions()
+    {
+        return new ChartOptions
+        {
+        };
+    }
+
+    // Utility Methods
+    private double GetResolutionProgress()
+    {
+        if (PerformanceStats == null) return 0;
+        
+        // Calculate as percentage of total issues resolved
+        var totalCategories = PerformanceStats.CategoryPerformance?.Sum(c => c.TotalIssues) ?? 1;
+        var resolvedCategories = PerformanceStats.CategoryPerformance?.Sum(c => c.ResolvedIssues) ?? 0;
+        
+        return totalCategories > 0 ? (double)resolvedCategories / totalCategories * 100 : 0;
+    }
+
+    private Color GetResolutionRateColor(double rate)
+    {
+        return rate switch
+        {
+            >= 90 => Color.Success,
+            >= 70 => Color.Info,
+            >= 50 => Color.Warning,
+            _ => Color.Error
+        };
+    }
+
+    private string FormatHours(double hours)
+    {
+        if (hours >= 24)
+            return $"{hours / 24:F1}d";
+        if (hours >= 1)
+            return $"{hours:F1}h";
+        return $"{hours * 60:F0}m";
+    }
+
+    // Category Methods
+    private string GetCategoryIcon(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => Icons.Material.Filled.BugReport,
+        IssueCategory.Billing => Icons.Material.Filled.Payment,
+        IssueCategory.General => Icons.Material.Filled.Help,
+        IssueCategory.Feature => Icons.Material.Filled.Star,
+        _ => Icons.Material.Filled.Category
+    };
+
+    private Color GetCategoryColor(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => Color.Error,
+        IssueCategory.Billing => Color.Warning,
+        IssueCategory.General => Color.Info,
+        IssueCategory.Feature => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetCategoryDisplayName(IssueCategory category) => category switch
+    {
+        IssueCategory.Technical => L["Technical"],
+        IssueCategory.Billing => L["Billing"],
+        IssueCategory.General => L["General"],
+        IssueCategory.Feature => L["Feature"],
+        _ => category.ToString()
+    };
+
+    // Priority Methods
+    private string GetPriorityDisplayName(IssuePriority priority) => priority switch
+    {
+        IssuePriority.Critical => L["Critical"],
+        IssuePriority.High => L["High"],
+        IssuePriority.Medium => L["Medium"],
+        IssuePriority.Low => L["Low"],
+        _ => priority.ToString()
+    };
+
+    // Channel Methods
+    private string GetChannelIcon(string channel) => channel.ToLowerInvariant() switch
+    {
+        "whatsapp" => Icons.Material.Filled.Chat,
+        "email" => Icons.Material.Filled.Email,
+        "web" => Icons.Material.Filled.Language,
+        "phone" => Icons.Material.Filled.Phone,
+        _ => Icons.Material.Filled.ContactSupport
+    };
+}

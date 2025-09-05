@@ -1,0 +1,304 @@
+@page "/diagnostic-dashboard"
+@using CleanArchitecture.Blazor.Server.UI.Pages.Dashboard.Components
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetDashboardMetrics
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetRecentActivity  
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using CleanArchitecture.Blazor.Server.UI.Components.Security
+@using CleanArchitecture.Blazor.Domain.Enums
+@using DashboardFiltersModel = CleanArchitecture.Blazor.Server.UI.Models.DashboardFiltersModel
+@implements IAsyncDisposable
+
+@inject IStringLocalizer<Dashboard> L
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+
+<PageTitle>@Title</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudStack Spacing="4">
+        <!-- Dashboard Header - ALWAYS WORKS -->
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+                <MudIcon Icon="@Icons.Material.Filled.Dashboard" Color="Color.Primary" Size="Size.Large" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h4" Class="font-weight-bold">Diagnostic Dashboard</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        Testing each component individually
+                    </MudText>
+                </MudStack>
+            </MudStack>
+        </MudStack>
+
+        <!-- Component Test Controls -->
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Component Tests</MudText>
+            <MudGrid>
+                <MudItem xs="3">
+                    <MudSwitch @bind-Value="@_showDashboardFilters" Label="Dashboard Filters" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="3">
+                    <MudSwitch @bind-Value="@_showIssueMetrics" Label="Issue Metrics Card" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="3">
+                    <MudSwitch @bind-Value="@_showStatusBoard" Label="Issue Status Board" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="3">
+                    <MudSwitch @bind-Value="@_showSecurityDashboard" Label="Security Dashboard" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="3">
+                    <MudSwitch @bind-Value="@_showPerformanceCharts" Label="Performance Charts" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="3">
+                    <MudSwitch @bind-Value="@_showActivityFeed" Label="Activity Feed" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="3">
+                    <MudButton Variant="Variant.Filled" OnClick="LoadData">Load Data</MudButton>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudButton Variant="Variant.Outlined" OnClick="EnableAll">Enable All</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <!-- Error Display -->
+        @foreach (var error in _componentErrors)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                <strong>@error.Key:</strong> @error.Value
+            </MudAlert>
+        }
+
+        <!-- Test Dashboard Filters -->
+        @if (_showDashboardFilters)
+        {
+            <MudPaper Class="pa-2" Style="border: 2px solid green;">
+                <MudText Typo="Typo.subtitle2" Color="Color.Success">Testing: DashboardFilters</MudText>
+                @try
+                {
+                    <DashboardFilters Filters="_filters" 
+                                     FiltersChanged="OnFiltersChanged"
+                                     AutoRefreshChanged="OnAutoRefreshChanged" />
+                }
+                catch (Exception ex)
+                {
+                    AddComponentError("DashboardFilters", ex.Message);
+                }
+            </MudPaper>
+        }
+
+        <!-- Test Issue Metrics Card -->
+        @if (_showIssueMetrics)
+        {
+            <MudPaper Class="pa-2" Style="border: 2px solid blue;">
+                <MudText Typo="Typo.subtitle2" Color="Color.Info">Testing: IssueMetricsCard</MudText>
+                @try
+                {
+                    <IssueMetricsCard Metrics="_dashboardMetrics" />
+                }
+                catch (Exception ex)
+                {
+                    AddComponentError("IssueMetricsCard", ex.Message);
+                }
+            </MudPaper>
+        }
+
+        <!-- Test Main Grid -->
+        <MudGrid>
+            <!-- Left Column -->
+            <MudItem xs="12" lg="4">
+                <MudStack Spacing="3">
+                    @if (_showStatusBoard)
+                    {
+                        <MudPaper Class="pa-2" Style="border: 2px solid orange;">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Warning">Testing: IssueStatusBoard</MudText>
+                            @try
+                            {
+                                <IssueStatusBoard Metrics="_dashboardMetrics" OnRefreshClick="RefreshDashboard" />
+                            }
+                            catch (Exception ex)
+                            {
+                                AddComponentError("IssueStatusBoard", ex.Message);
+                            }
+                        </MudPaper>
+                    }
+
+                    @if (_showSecurityDashboard)
+                    {
+                        <MudPaper Class="pa-2" Style="border: 2px solid red;">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Error">Testing: SecurityRiskDashboard</MudText>
+                            @try
+                            {
+                                <SecurityRiskDashboard />
+                            }
+                            catch (Exception ex)
+                            {
+                                AddComponentError("SecurityRiskDashboard", ex.Message);
+                            }
+                        </MudPaper>
+                    }
+                </MudStack>
+            </MudItem>
+
+            <!-- Center Column -->
+            <MudItem xs="12" lg="5">
+                @if (_showPerformanceCharts)
+                {
+                    <MudPaper Class="pa-2" Style="border: 2px solid purple;">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Testing: PerformanceCharts</MudText>
+                        @try
+                        {
+                            <PerformanceCharts PerformanceStats="_performanceStats" OnRefreshClick="RefreshDashboard" />
+                        }
+                        catch (Exception ex)
+                        {
+                            AddComponentError("PerformanceCharts", ex.Message);
+                        }
+                    </MudPaper>
+                }
+            </MudItem>
+
+            <!-- Right Column -->
+            <MudItem xs="12" lg="3">
+                @if (_showActivityFeed)
+                {
+                    <MudPaper Class="pa-2" Style="border: 2px solid teal;">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Dark">Testing: RealTimeActivityFeed</MudText>
+                        @try
+                        {
+                            <RealTimeActivityFeed OnViewIssue="ViewIssueDetails" />
+                        }
+                        catch (Exception ex)
+                        {
+                            AddComponentError("RealTimeActivityFeed", ex.Message);
+                        }
+                    </MudPaper>
+                }
+            </MudItem>
+        </MudGrid>
+
+        <!-- Debug Info -->
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6">Debug Information</MudText>
+            <MudText>Data Loaded: @(_dashboardMetrics != null)</MudText>
+            <MudText>Performance Stats: @(_performanceStats != null)</MudText>
+            <MudText>Component Errors: @_componentErrors.Count</MudText>
+            <MudText>Loading: @_loading</MudText>
+        </MudPaper>
+    </MudStack>
+</MudContainer>
+
+@code {
+    public string Title { get; set; } = "Diagnostic Dashboard";
+
+    private DashboardMetricsDto? _dashboardMetrics;
+    private PerformanceStatsDto? _performanceStats;
+    private DashboardFiltersModel _filters = new();
+    private bool _loading = false;
+    private DateTime? _lastRefreshed;
+    private Timer? _refreshTimer;
+    
+    // Component visibility flags
+    private bool _showDashboardFilters = false;
+    private bool _showIssueMetrics = false;
+    private bool _showStatusBoard = false;
+    private bool _showSecurityDashboard = false;
+    private bool _showPerformanceCharts = false;
+    private bool _showActivityFeed = false;
+    
+    // Error tracking
+    private Dictionary<string, string> _componentErrors = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Title = "Diagnostic Dashboard";
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            AddComponentError("OnInitializedAsync", ex.Message);
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            // Load dashboard metrics
+            var metricsQuery = new GetDashboardMetricsQuery();
+            var metricsResult = await Mediator.Send(metricsQuery);
+            if (metricsResult.Succeeded)
+            {
+                _dashboardMetrics = metricsResult.Data;
+            }
+
+            // Load performance stats  
+            var statsQuery = new GetPerformanceStatsQuery(30);
+            var statsResult = await Mediator.Send(statsQuery);
+            if (statsResult.Succeeded)
+            {
+                _performanceStats = statsResult.Data;
+            }
+
+            _lastRefreshed = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            AddComponentError("LoadData", ex.Message);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AddComponentError(string component, string error)
+    {
+        _componentErrors[component] = error;
+        StateHasChanged();
+    }
+
+    private void EnableAll()
+    {
+        _showDashboardFilters = true;
+        _showIssueMetrics = true;
+        _showStatusBoard = true;
+        _showSecurityDashboard = true;
+        _showPerformanceCharts = true;
+        _showActivityFeed = true;
+        StateHasChanged();
+    }
+
+    private async Task RefreshDashboard()
+    {
+        await LoadData();
+    }
+
+    private async Task OnFiltersChanged(DashboardFiltersModel newFilters)
+    {
+        _filters = newFilters;
+        await LoadData();
+    }
+
+    private void OnAutoRefreshChanged(bool autoRefresh)
+    {
+        // Simplified for testing
+        _filters.AutoRefresh = autoRefresh;
+    }
+
+    private Task ViewIssueDetails(Guid issueId)
+    {
+        Snackbar.Add($"Navigating to issue {issueId}", Severity.Info);
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _refreshTimer?.Dispose();
+    }
+}
