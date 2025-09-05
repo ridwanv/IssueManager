@@ -198,6 +198,28 @@ public class ServerHub : Hub<ISignalRHub>
         await Clients.Group("Agents").ConversationEscalated(conversationId, reason, customerPhoneNumber).ConfigureAwait(false);
     }
 
+    // Enhanced notification methods for improved agent dashboard
+    public async Task BroadcastEscalationNotification(int conversationId, string reason, string customerPhoneNumber, int priority = 1, DateTime? escalatedAt = null)
+    {
+        var escalationTime = escalatedAt ?? DateTime.UtcNow;
+        await Clients.Group("Agents").EscalationNotification(conversationId, reason, customerPhoneNumber, priority, escalationTime).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastAgentWorkloadUpdated(int agentId, int activeCount, int maxCount, bool isAvailable)
+    {
+        await Clients.Group("Agents").AgentWorkloadUpdated(agentId, activeCount, maxCount, isAvailable).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastEscalationQueueUpdated(int queueCount)
+    {
+        await Clients.Group("Agents").EscalationQueueUpdated(queueCount).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastAgentAvailabilityChanged(int agentId, string status, bool isAvailable, string agentName)
+    {
+        await Clients.Group("Agents").AgentAvailabilityChanged(agentId, status, isAvailable, agentName).ConfigureAwait(false);
+    }
+
     public async Task BroadcastConversationAssigned(int conversationId, string agentId, string agentName)
     {
         await Clients.All.ConversationAssigned(conversationId, agentId, agentName).ConfigureAwait(false);

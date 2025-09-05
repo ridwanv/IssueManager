@@ -14,6 +14,7 @@ public class Conversation : BaseAuditableEntity, IMustHaveTenant
     public string? WhatsAppPhoneNumber { get; set; }
     public ConversationStatus Status { get; set; } = ConversationStatus.Active;
     public ConversationMode Mode { get; set; } = ConversationMode.Bot;
+    public int Priority { get; set; } = 1; // 1=Standard, 2=High, 3=Critical
     public string? CurrentAgentId { get; set; }
     public DateTime StartTime { get; set; } = DateTime.UtcNow;
     public DateTime? EscalatedAt { get; set; }

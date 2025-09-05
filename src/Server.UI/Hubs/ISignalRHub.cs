@@ -38,4 +38,10 @@ public interface ISignalRHub
     Task ConversationCompleted(int conversationId, string agentId);
     Task AgentStatusChanged(string agentId, string status);
     Task NewConversationMessage(int conversationId, string from, string message, bool isFromAgent);
+    
+    // Enhanced agent notification methods
+    Task EscalationNotification(int conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt);
+    Task AgentWorkloadUpdated(int agentId, int activeCount, int maxCount, bool isAvailable);
+    Task EscalationQueueUpdated(int queueCount);
+    Task AgentAvailabilityChanged(int agentId, string status, bool isAvailable, string agentName);
 }

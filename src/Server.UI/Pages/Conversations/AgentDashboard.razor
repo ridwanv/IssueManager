@@ -5,12 +5,18 @@
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation
 @using CleanArchitecture.Blazor.Application.Common.Security
+@using Microsoft.AspNetCore.SignalR.Client
+@using CleanArchitecture.Blazor.Server.UI.Hubs
 
 @attribute [Authorize(Policy = Permissions.Conversations.ViewAgentDashboard)]
 
 @inject IMediator Mediator
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<script src="~/js/notifications.js"></script>
 
 <PageTitle>Agent Dashboard</PageTitle>
 
@@ -21,13 +27,20 @@
             <MudText Typo="Typo.body1" Class="mud-text-secondary">Real-time conversation escalation management</MudText>
         </div>
         <div class="d-flex align-center gap-4">
+            <MudChip T="string" 
+                    Icon="@GetConnectionIcon()" 
+                    Color="@GetConnectionColor()" 
+                    Size="Size.Small">
+                @_connectionStatus
+            </MudChip>
             <MudChip T="string" Icon="Icons.Material.Filled.AccessTime" Color="Color.Info" Size="Size.Small">
                 Last Updated: @_lastUpdate.ToString("HH:mm:ss")
             </MudChip>
             <MudButton Variant="Variant.Outlined" 
                       StartIcon="Icons.Material.Filled.Refresh" 
                       OnClick="RefreshData" 
-                      Size="Size.Small">
+                      Size="Size.Small"
+                      Disabled="@_isConnecting">
                 Refresh
             </MudButton>
         </div>
@@ -112,15 +125,26 @@
                 else
                 {
                     <div style="height: 500px; overflow-y: auto;">
-                        @foreach (var conversation in _escalatedConversations.OrderBy(c => c.EscalatedAt))
+                        @foreach (var conversation in _escalatedConversations)
                         {
-                            <MudCard Class="mb-3">
+                            <MudCard Class="@($"mb-3 {GetPriorityCardClass(conversation.Priority)}")">
                                 <MudCardContent>
                                     <div class="d-flex justify-space-between align-start mb-2">
                                         <div class="flex-grow-1">
-                                            <MudText Typo="Typo.subtitle1" Class="mb-1">
-                                                📱 @(conversation.WhatsAppPhoneNumber ?? "Unknown Number")
-                                            </MudText>
+                                            <div class="d-flex align-center gap-2 mb-1">
+                                                <MudText Typo="Typo.subtitle1">
+                                                    📱 @(conversation.WhatsAppPhoneNumber ?? "Unknown Number")
+                                                </MudText>
+                                                @if (conversation.Priority > 1)
+                                                {
+                                                    <MudChip T="string" 
+                                                            Size="Size.Small" 
+                                                            Color="@GetPriorityColor(conversation.Priority)"
+                                                            Icon="@GetPriorityIcon(conversation.Priority)">
+                                                        @conversation.PriorityText
+                                                    </MudChip>
+                                                }
+                                            </div>
                                             <MudText Typo="Typo.body2" Class="mb-2 mud-text-secondary">
                                                 @conversation.EscalationReason
                                             </MudText>
@@ -193,13 +217,18 @@
     private bool _autoAssign = false;
     private DateTime _lastUpdate = DateTime.Now;
     private Timer? _refreshTimer;
+    
+    // SignalR connection management
+    private HubConnection? _hubConnection;
+    private bool _isConnected = false;
+    private bool _isConnecting = false;
+    private string _connectionStatus = "Disconnected";
 
     protected override async Task OnInitializedAsync()
     {
         await RefreshData();
-        
-        // Set up auto-refresh every 30 seconds
-        _refreshTimer = new Timer(async _ => await InvokeAsync(RefreshData), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        await InitializeSignalRConnection();
+        await InitializeBrowserNotifications();
     }
 
     private async Task RefreshData()
@@ -296,6 +325,279 @@
         await JS.InvokeVoidAsync("open", $"/conversations/{conversation.Id}", "_blank");
     }
 
+    // SignalR Connection Management
+    private async Task InitializeSignalRConnection()
+    {
+        if (_isConnecting) return;
+        
+        _isConnecting = true;
+        _connectionStatus = "Connecting...";
+        StateHasChanged();
+        
+        try
+        {
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri(ISignalRHub.Url))
+                .WithAutomaticReconnect()
+                .Build();
+            
+            // Setup event handlers for real-time notifications
+            _hubConnection.On<int, string, string, int, DateTime>("EscalationNotification", OnEscalationNotification);
+            _hubConnection.On<int, int, int, bool>("AgentWorkloadUpdated", OnAgentWorkloadUpdated);
+            _hubConnection.On<int>("EscalationQueueUpdated", OnEscalationQueueUpdated);
+            _hubConnection.On<int, string, bool, string>("AgentAvailabilityChanged", OnAgentAvailabilityChanged);
+            _hubConnection.On<int, string, string>("ConversationAssigned", OnConversationAssigned);
+            _hubConnection.On<int, string>("ConversationCompleted", OnConversationCompleted);
+            
+            // Handle connection state changes
+            _hubConnection.Reconnecting += (error) =>
+            {
+                InvokeAsync(() =>
+                {
+                    _connectionStatus = "Reconnecting...";
+                    _isConnected = false;
+                    StateHasChanged();
+                });
+                return Task.CompletedTask;
+            };
+            
+            _hubConnection.Reconnected += (connectionId) =>
+            {
+                InvokeAsync(async () =>
+                {
+                    _connectionStatus = "Connected";
+                    _isConnected = true;
+                    StateHasChanged();
+                    
+                    // Rejoin the agent group after reconnection
+                    await _hubConnection.InvokeAsync("JoinAgentGroup");
+                });
+                return Task.CompletedTask;
+            };
+            
+            _hubConnection.Closed += (error) =>
+            {
+                InvokeAsync(() =>
+                {
+                    _connectionStatus = error == null ? "Disconnected" : $"Error: {error.Message}";
+                    _isConnected = false;
+                    StateHasChanged();
+                });
+                return Task.CompletedTask;
+            };
+            
+            // Start the connection
+            await _hubConnection.StartAsync();
+            
+            // Join the agent group to receive notifications
+            await _hubConnection.InvokeAsync("JoinAgentGroup");
+            
+            _isConnected = true;
+            _connectionStatus = "Connected";
+            
+            // Stop the timer-based refresh since we now have real-time updates
+            _refreshTimer?.Dispose();
+            _refreshTimer = null;
+        }
+        catch (Exception ex)
+        {
+            _connectionStatus = $"Failed: {ex.Message}";
+            Snackbar.Add($"Failed to connect to real-time updates: {ex.Message}", Severity.Warning);
+        }
+        finally
+        {
+            _isConnecting = false;
+            StateHasChanged();
+        }
+    }
+
+    // Browser Notification Initialization
+    private async Task InitializeBrowserNotifications()
+    {
+        try
+        {
+            // Check if browser supports notifications
+            var isSupported = await JS.InvokeAsync<bool>("agentNotifications.isNotificationSupported");
+            if (!isSupported) return;
+
+            // Check current permission status
+            var permission = await JS.InvokeAsync<string>("agentNotifications.getNotificationPermission");
+            
+            if (permission == "default")
+            {
+                // Request permission
+                var newPermission = await JS.InvokeAsync<string>("agentNotifications.requestNotificationPermission");
+                if (newPermission == "granted")
+                {
+                    Snackbar.Add("Browser notifications enabled for escalations", Severity.Success);
+                }
+            }
+            
+            // Initialize audio notifications
+            await JS.InvokeVoidAsync("agentNotifications.initializeDefaultSounds");
+        }
+        catch (Exception ex)
+        {
+            // Notifications are optional, so just log the error
+            Console.WriteLine($"Failed to initialize browser notifications: {ex.Message}");
+        }
+    }
+
+    // SignalR Event Handlers
+    private async Task OnEscalationNotification(int conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt)
+    {
+        await InvokeAsync(async () =>
+        {
+            // Refresh the escalated conversations list to show the new escalation
+            await RefreshEscalatedConversations();
+            
+            // Show in-app notification
+            Snackbar.Add($"New escalation from {customerPhoneNumber}: {reason}", priority > 1 ? Severity.Error : Severity.Warning);
+            
+            // Show browser and audio notifications if user is not actively viewing the page
+            try
+            {
+                var isVisible = await JS.InvokeAsync<bool>("document.hasFocus");
+                if (!isVisible)
+                {
+                    // Create preference object (for now using defaults, will be configurable later)
+                    var preferences = new 
+                    { 
+                        browserNotifications = true, 
+                        audioNotifications = true, 
+                        audioVolume = 0.7 
+                    };
+                    
+                    await JS.InvokeVoidAsync("agentNotifications.showEscalationNotification", 
+                        customerPhoneNumber, reason, priority, preferences);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error showing browser notification: {ex.Message}");
+            }
+            
+            _lastUpdate = DateTime.Now;
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnAgentWorkloadUpdated(int agentId, int activeCount, int maxCount, bool isAvailable)
+    {
+        await InvokeAsync(async () =>
+        {
+            // Update the specific agent's workload in our list
+            var agent = _availableAgents.FirstOrDefault(a => a.Id == agentId);
+            if (agent != null)
+            {
+                agent.ActiveConversationCount = activeCount;
+                agent.MaxConcurrentConversations = maxCount;
+                // IsAvailable is a computed property, so we don't need to set it directly
+            }
+            else
+            {
+                // Refresh the full agent list if we don't have this agent
+                await RefreshAvailableAgents();
+            }
+            
+            _lastUpdate = DateTime.Now;
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnEscalationQueueUpdated(int queueCount)
+    {
+        await InvokeAsync(async () =>
+        {
+            // Refresh the escalated conversations to get the latest queue state
+            await RefreshEscalatedConversations();
+            
+            _lastUpdate = DateTime.Now;
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnAgentAvailabilityChanged(int agentId, string status, bool isAvailable, string agentName)
+    {
+        await InvokeAsync(async () =>
+        {
+            // Update or refresh agent availability
+            var agent = _availableAgents.FirstOrDefault(a => a.Id == agentId);
+            if (agent != null)
+            {
+                // Update the underlying Status property, which affects IsAvailable and StatusText
+                if (Enum.TryParse<CleanArchitecture.Blazor.Domain.Enums.AgentStatus>(status, out var agentStatus))
+                {
+                    agent.Status = agentStatus;
+                }
+            }
+            else
+            {
+                await RefreshAvailableAgents();
+            }
+            
+            _lastUpdate = DateTime.Now;
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnConversationAssigned(int conversationId, string agentId, string agentName)
+    {
+        await InvokeAsync(async () =>
+        {
+            // Remove from escalated list or refresh to get current state
+            await RefreshEscalatedConversations();
+            await RefreshAvailableAgents();
+            
+            Snackbar.Add($"Conversation assigned to {agentName}", Severity.Success);
+            
+            _lastUpdate = DateTime.Now;
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnConversationCompleted(int conversationId, string agentId)
+    {
+        await InvokeAsync(async () =>
+        {
+            // Refresh both lists to reflect the completion
+            await RefreshEscalatedConversations();
+            await RefreshAvailableAgents();
+            
+            _lastUpdate = DateTime.Now;
+            StateHasChanged();
+        });
+    }
+
+    // Helper methods for targeted refreshes
+    private async Task RefreshEscalatedConversations()
+    {
+        try
+        {
+            var result = await Mediator.Send(new GetEscalatedConversationsQuery());
+            if (result.Succeeded)
+                _escalatedConversations = result.Data;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error refreshing escalated conversations: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RefreshAvailableAgents()
+    {
+        try
+        {
+            var result = await Mediator.Send(new GetAvailableAgentsQuery());
+            if (result.Succeeded)
+                _availableAgents = result.Data;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error refreshing available agents: {ex.Message}", Severity.Error);
+        }
+    }
+
     private Color GetStatusColor(CleanArchitecture.Blazor.Domain.Enums.AgentStatus status)
     {
         return status switch
@@ -338,8 +640,74 @@
             return $"{duration.Minutes}m {duration.Seconds}s";
     }
 
-    public void Dispose()
+    private string GetConnectionIcon()
+    {
+        return _connectionStatus switch
+        {
+            "Connected" => Icons.Material.Filled.CloudDone,
+            "Connecting..." => Icons.Material.Filled.CloudSync,
+            "Reconnecting..." => Icons.Material.Filled.CloudSync,
+            _ => Icons.Material.Filled.CloudOff
+        };
+    }
+
+    private Color GetConnectionColor()
+    {
+        return _connectionStatus switch
+        {
+            "Connected" => Color.Success,
+            "Connecting..." => Color.Info,
+            "Reconnecting..." => Color.Warning,
+            _ => Color.Error
+        };
+    }
+
+    // Priority styling methods
+    private string GetPriorityCardClass(int priority)
+    {
+        return priority switch
+        {
+            3 => "border-error", // Critical
+            2 => "border-warning", // High
+            _ => "" // Standard
+        };
+    }
+
+    private Color GetPriorityColor(int priority)
+    {
+        return priority switch
+        {
+            3 => Color.Error, // Critical
+            2 => Color.Warning, // High  
+            _ => Color.Primary // Standard
+        };
+    }
+
+    private string GetPriorityIcon(int priority)
+    {
+        return priority switch
+        {
+            3 => Icons.Material.Filled.PriorityHigh, // Critical
+            2 => Icons.Material.Filled.Warning, // High
+            _ => Icons.Material.Filled.Info // Standard
+        };
+    }
+
+    public async ValueTask DisposeAsync()
     {
         _refreshTimer?.Dispose();
+        
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("LeaveAgentGroup");
+                await _hubConnection.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
     }
 }

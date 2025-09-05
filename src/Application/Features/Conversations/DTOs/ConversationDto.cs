@@ -14,6 +14,7 @@ public record ConversationDto
     public string? WhatsAppPhoneNumber { get; set; }
     public ConversationStatus Status { get; set; }
     public ConversationMode Mode { get; set; }
+    public int Priority { get; set; } = 1; // 1=Standard, 2=High, 3=Critical
     public string? CurrentAgentId { get; set; }
     public string? CurrentAgentName { get; set; }
     public DateTime StartTime { get; set; }
@@ -35,6 +36,14 @@ public record ConversationDto
     public string StatusText => Status.ToString();
     public string ModeText => Mode.ToString();
     public string DurationText => Duration.ToString(@"hh\:mm\:ss");
+    public string PriorityText => Priority switch
+    {
+        1 => "Standard",
+        2 => "High",
+        3 => "Critical",
+        _ => "Standard"
+    };
+    public bool IsPriority => Priority > 1;
     
     private class Mapping : Profile
     {

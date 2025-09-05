@@ -30,7 +30,8 @@ public class GetEscalatedConversationsQueryHandler : IRequestHandler<GetEscalate
         var conversations = await db.Conversations
             .Where(c => c.Status == ConversationStatus.Active && 
                        (c.Mode == ConversationMode.Escalating || c.Mode == ConversationMode.Human))
-            .OrderBy(c => c.EscalatedAt)
+            .OrderByDescending(c => c.Priority) // Critical and High priority first
+            .ThenBy(c => c.EscalatedAt) // Then by escalation time
             .Select(c => new ConversationDto
             {
                 Id = c.Id,
@@ -38,6 +39,7 @@ public class GetEscalatedConversationsQueryHandler : IRequestHandler<GetEscalate
                 WhatsAppPhoneNumber = c.WhatsAppPhoneNumber,
                 Status = c.Status,
                 Mode = c.Mode,
+                Priority = c.Priority,
                 CurrentAgentId = c.CurrentAgentId,
                 CurrentAgentName = null, // Will be populated below
                 EscalatedAt = c.EscalatedAt,

@@ -26,7 +26,8 @@
       "Bash(claude mcp)",
       "WebFetch(domain:learn.microsoft.com)",
       "Bash(dotnet clean:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": [],
