@@ -8,6 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers();
 
+// Add HttpClient for API calls
+builder.Services.AddHttpClient();
 
 // Add Application and Infrastructure services
 builder.Services.AddApplication();

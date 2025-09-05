@@ -68,6 +68,13 @@ public class IssueListDto
     
     [Description("Product")]
     public string? Product { get; set; }
+    
+    // JIRA Integration
+    [Description("JIRA Key")]
+    public string? JiraKey { get; set; }
+    
+    [Description("JIRA URL")]
+    public string? JiraUrl { get; set; }
 
     private class Mapping : Profile
     {

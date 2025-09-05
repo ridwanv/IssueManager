@@ -39,6 +39,12 @@ namespace CleanArchitecture.Blazor.Domain.Entities
         public string? Severity { get; set; }
         public string? Summary { get; set; }
         
+        // JIRA Integration properties
+        public string? JiraKey { get; set; } // JIRA issue key (e.g., "SUP-123")
+        public string? JiraUrl { get; set; } // Direct URL to JIRA issue
+        public DateTime? JiraCreatedAt { get; set; } // When it was created in JIRA
+        public DateTime? JiraLastSyncAt { get; set; } // Last successful sync with JIRA
+        
         // Relationships
         public Guid? DuplicateOfId { get; set; }
         public Issue? DuplicateOf { get; set; }

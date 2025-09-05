@@ -203,7 +203,7 @@ public class CreateIssueCommandHandler : IRequestHandler<CreateIssueCommand, Res
                     await _mediator.Send(linkCommand, cancellationToken);
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Log error but don't fail issue creation
                 // This will be logged through the mediator pipeline

@@ -14,6 +14,8 @@ using CleanArchitecture.Blazor.Infrastructure.Persistence.Interceptors;
 using CleanArchitecture.Blazor.Infrastructure.Services.Circuits;
 using CleanArchitecture.Blazor.Infrastructure.Services.Gemini;
 using CleanArchitecture.Blazor.Infrastructure.Services.MultiTenant;
+using CleanArchitecture.Blazor.Infrastructure.Services.Jira;
+using CleanArchitecture.Blazor.Infrastructure.Services.Jira.Models;
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -180,6 +182,17 @@ public static class DependencyInjection
         
         // Configure IssueSimilarityService for OpenAI-powered issue comparison
         services.AddScoped<IIssueSimilarityService, IssueSimilarityService>();
+
+        // Configure JIRA Integration Services
+        services.Configure<JiraConfiguration>(configuration.GetSection(JiraConfiguration.SectionName));
+        services.AddHttpClient<IJiraServiceExtended, JiraService>(client =>
+        {
+            // HttpClient configuration will be handled in JiraService constructor
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.Add("User-Agent", "IssueManager-JIRA-Integration/1.0");
+        });
+        services.AddScoped<CleanArchitecture.Blazor.Application.Common.Interfaces.IJiraService, JiraService>();
+        services.AddScoped<IJiraServiceExtended, JiraService>();
 
         // Configure HttpClient for ProactiveMessagingService
         services.AddHttpClient<IProactiveMessagingService, ProactiveMessagingService>(client =>

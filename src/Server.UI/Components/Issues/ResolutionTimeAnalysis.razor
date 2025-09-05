@@ -1,0 +1,33 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using Microsoft.Extensions.Localization
+@using MudBlazor
+
+@inject IStringLocalizer<ResolutionTimeAnalysis> L
+
+<div>
+    <div class="mb-3">
+        <div class="d-flex justify-space-between align-center pa-3" style="background: #f5f5f5; border-radius: 8px;">
+            <div class="text-center">
+                <div style="font-size: 1.2rem; font-weight: bold;">@PerformanceStats.MedianResolutionFormatted</div>
+                <div style="font-size: 0.8rem; color: #666;">@L["Median Time"]</div>
+            </div>
+            <div class="text-center">
+                <div style="font-size: 1.2rem; font-weight: bold;">@PerformanceStats.P90ResolutionFormatted</div>
+                <div style="font-size: 0.8rem; color: #666;">@L["90th Percentile"]</div>
+            </div>
+        </div>
+    </div>
+    
+    <div style="background: #f9f9f9; padding: 12px; border-radius: 8px;">
+        <div style="font-size: 0.9rem; margin-bottom: 8px;">@L["Statistics"]:</div>
+        <div style="font-size: 0.8rem; line-height: 1.4;">
+            <div>@L["Total Resolved"]: <strong>@PerformanceStats.TotalResolvedIssues</strong></div>
+            <div>@L["95th Percentile"]: <strong>@PerformanceStats.P95ResolutionFormatted</strong></div>
+            <div>@L["Period"]: <strong>@PerformanceStats.PeriodDays @L["days"]</strong></div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public PerformanceStatsDto PerformanceStats { get; set; } = default!;
+}

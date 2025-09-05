@@ -89,6 +89,16 @@ public class IssueDto
     
     [Description("Last Modified By")]
     public string? LastModifiedBy { get; set; }
+    
+    // JIRA Integration
+    [Description("JIRA Key")]
+    public string? JiraKey { get; set; }
+    
+    [Description("JIRA URL")]
+    public string? JiraUrl { get; set; }
+    
+    [Description("JIRA Last Sync")]
+    public DateTime? JiraLastSyncAt { get; set; }
 
     private class Mapping : Profile
     {

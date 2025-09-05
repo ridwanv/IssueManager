@@ -72,6 +72,47 @@ public class IssuesController : ControllerBase
     }
 
     /// <summary>
+    /// Get a specific issue by JIRA Key
+    /// </summary>
+    /// <param name="jiraKey">JIRA Key (e.g., SUP-123)</param>
+    /// <returns>Issue details</returns>
+    [HttpGet("by-jira-key/{jiraKey}")]
+    public async Task<ActionResult<Result<IssueDto>>> GetIssueByJiraKey(string jiraKey)
+    {
+        try
+        {
+            var query = new GetIssuesQuery 
+            { 
+                PageNumber = 1, 
+                PageSize = 1, 
+                Keyword = jiraKey  // Use keyword search to find by JIRA key
+            };
+            
+            var result = await _mediator.Send(query);
+            
+            if (result?.Items?.Any() == true)
+            {
+                // Find exact match by JiraKey
+                var issue = result.Items.FirstOrDefault(i => i.JiraKey == jiraKey);
+                if (issue != null)
+                {
+                    // Get full details
+                    var detailQuery = new GetIssueByIdQuery { Id = issue.Id };
+                    var detailResult = await _mediator.Send(detailQuery);
+                    return Ok(detailResult);
+                }
+            }
+            
+            return NotFound(await Result<IssueDto>.FailureAsync($"Issue with JIRA key '{jiraKey}' not found"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving issue by JIRA key {JiraKey}", jiraKey);
+            return StatusCode(500, "An error occurred while retrieving the issue");
+        }
+    }
+
+    /// <summary>
     /// Get a specific issue by ID
     /// </summary>
     /// <param name="id">Issue ID</param>

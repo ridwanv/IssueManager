@@ -1,0 +1,139 @@
+@using ApexCharts
+@using CleanArchitecture.Blazor.Domain.Enums
+@using Microsoft.Extensions.Localization
+@using CleanArchitecture.Blazor.Server.UI.Services
+@using MudBlazor
+
+@inject IStringLocalizer<StatusDistributionChart> L
+@inject LayoutService LayoutService
+
+@if (StatusData?.Any() == true)
+{
+    <ApexChart TItem="StatusChartData" 
+               Options="Options" 
+               @ref="Chart"
+               Height="320">
+        
+        <ApexPointSeries TItem="StatusChartData"
+                         Items="ChartData"
+                         Name="Issues"
+                         XValue="@(e => e.Label)"
+                         YValue="@(e => (decimal)e.Value)"
+                         SeriesType="SeriesType.Donut" />
+    </ApexChart>
+}
+else
+{
+    <div class="d-flex justify-center align-center" style="height: 320px;">
+        <MudText Typo="Typo.body1" Color="Color.Default">@L["No data available"]</MudText>
+    </div>
+}
+
+@code {
+    [Parameter] public Dictionary<IssueStatus, int> StatusData { get; set; } = default!;
+
+    private ApexChart<StatusChartData>? Chart;
+    private ApexChartOptions<StatusChartData> Options = new();
+    private List<StatusChartData> ChartData = new();
+
+    private readonly Dictionary<IssueStatus, string> StatusColors = new()
+    {
+        { IssueStatus.New, "#1976D2" },
+        { IssueStatus.InProgress, "#FF9800" },
+        { IssueStatus.Resolved, "#4CAF50" },
+        { IssueStatus.Closed, "#388E3C" },
+        { IssueStatus.OnHold, "#757575" }
+    };
+
+    private bool _shouldRender = false;
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (StatusData?.Any() == true)
+        {
+            PrepareChartData();
+            SetupChartOptions();
+            _shouldRender = true;
+        }
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldRender && Chart != null)
+        {
+            await Chart.RenderAsync();
+            _shouldRender = false;
+        }
+    }
+
+    private void PrepareChartData()
+    {
+        ChartData = StatusData.Select(kvp => new StatusChartData
+        {
+            Label = kvp.Key.ToString(),
+            Value = kvp.Value,
+            Status = kvp.Key
+        }).ToList();
+    }
+
+    private void SetupChartOptions()
+    {
+        var isDarkMode = LayoutService.IsDarkMode;
+        
+        Options = new ApexChartOptions<StatusChartData>
+        {
+            Theme = new Theme { Mode = isDarkMode ? Mode.Dark : Mode.Light },
+            Chart = new Chart { Background = "transparent" },
+            Colors = ChartData.Select(d => StatusColors.GetValueOrDefault(d.Status, "#9E9E9E")).ToList(),
+            Legend = new Legend
+            {
+                Position = LegendPosition.Bottom,
+                HorizontalAlign = ApexCharts.Align.Center
+            },
+            Tooltip = new Tooltip
+            {
+                Y = new TooltipY
+                {
+                    Formatter = @"function(value) { return value + ' issues'; }"
+                }
+            },
+            PlotOptions = new PlotOptions
+            {
+                Pie = new PlotOptionsPie
+                {
+                    Donut = new PlotOptionsDonut
+                    {
+                        Size = "65%",
+                        Labels = new DonutLabels
+                        {
+                            Show = true,
+                            Total = new DonutLabelTotal
+                            {
+                                Show = true,
+                                Label = L["Total"],
+                                Formatter = @"function(opts) { 
+                                    return opts.config.series.reduce((a, b) => a + b, 0) + ' issues'; 
+                                }"
+                            }
+                        }
+                    }
+                }
+            },
+            DataLabels = new DataLabels
+            {
+                Enabled = true,
+                Formatter = @"function(val, opts) { 
+                    return Math.round(val) + '%'; 
+                }"
+            }
+        };
+    }
+
+    private class StatusChartData
+    {
+        public string Label { get; set; } = string.Empty;
+        public int Value { get; set; }
+        public IssueStatus Status { get; set; }
+    }
+}

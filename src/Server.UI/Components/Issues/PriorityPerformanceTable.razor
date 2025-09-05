@@ -1,0 +1,44 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using Microsoft.Extensions.Localization
+@using MudBlazor
+
+@inject IStringLocalizer<PriorityPerformanceTable> L
+
+<MudSimpleTable Dense="true" Hover="true">
+    <thead>
+        <tr>
+            <th>@L["Priority"]</th>
+            <th>@L["Total"]</th>
+            <th>@L["Resolved"]</th>
+            <th>@L["Rate"]</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var priority in Priorities.OrderByDescending(p => p.TotalIssues))
+        {
+            <tr>
+                <td>
+                    <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(priority.Priority)">
+                        @priority.Priority.ToString()
+                    </MudChip>
+                </td>
+                <td>@priority.TotalIssues</td>
+                <td>@priority.ResolvedIssues</td>
+                <td>@priority.ResolutionRateFormatted</td>
+            </tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    [Parameter] public List<PriorityPerformanceDto> Priorities { get; set; } = default!;
+
+    private Color GetPriorityColor(CleanArchitecture.Blazor.Domain.Enums.IssuePriority priority) => priority switch
+    {
+        CleanArchitecture.Blazor.Domain.Enums.IssuePriority.Critical => Color.Error,
+        CleanArchitecture.Blazor.Domain.Enums.IssuePriority.High => Color.Warning,
+        CleanArchitecture.Blazor.Domain.Enums.IssuePriority.Medium => Color.Info,
+        CleanArchitecture.Blazor.Domain.Enums.IssuePriority.Low => Color.Success,
+        _ => Color.Default
+    };
+}

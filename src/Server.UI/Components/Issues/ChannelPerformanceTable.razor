@@ -1,0 +1,31 @@
+@using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetPerformanceStats
+@using Microsoft.Extensions.Localization
+@using MudBlazor
+
+@inject IStringLocalizer<ChannelPerformanceTable> L
+
+<MudSimpleTable Dense="true" Hover="true">
+    <thead>
+        <tr>
+            <th>@L["Channel"]</th>
+            <th>@L["Total"]</th>
+            <th>@L["Resolved"]</th>
+            <th>@L["Rate"]</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var channel in Channels.OrderByDescending(c => c.TotalIssues))
+        {
+            <tr>
+                <td>@channel.Channel</td>
+                <td>@channel.TotalIssues</td>
+                <td>@channel.ResolvedIssues</td>
+                <td>@channel.ResolutionRateFormatted</td>
+            </tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    [Parameter] public List<ChannelPerformanceDto> Channels { get; set; } = default!;
+}

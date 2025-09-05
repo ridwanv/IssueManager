@@ -29,6 +29,14 @@ public class MenuService : IMenuService
                 },
                 new()
                 {
+                    Title = "Issue Analytics",
+                    Roles = new[] { RoleName.Admin, RoleName.Users },
+                    Icon = Icons.Material.Filled.Analytics,
+                    Href = "/issues/analytics",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
                     Title = "E-Commerce",
                     Icon = Icons.Material.Filled.ShoppingCart,
                     PageStatus = PageStatus.Completed,
