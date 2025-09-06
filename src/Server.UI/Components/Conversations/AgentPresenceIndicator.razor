@@ -1,0 +1,83 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+
+@if (CurrentViewers?.Any() == true)
+{
+    <div class="agent-presence-container">
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+            Currently viewing:
+        </MudText>
+        <div class="agent-avatars">
+            @foreach (var viewer in CurrentViewers.Take(5))
+            {
+                <MudTooltip Text="@viewer.DisplayName">
+                    <MudAvatar Size="Size.Small" 
+                              Color="@(viewer.IsCurrentUser ? Color.Primary : Color.Secondary)"
+                              Style="margin-right: 4px; border: 2px solid var(--mud-palette-background);">
+                        @if (!string.IsNullOrEmpty(viewer.ProfilePictureDataUrl))
+                        {
+                            <MudImage Src="@viewer.ProfilePictureDataUrl" Alt="@viewer.DisplayName" />
+                        }
+                        else
+                        {
+                            @(GetInitials(viewer.DisplayName))
+                        }
+                    </MudAvatar>
+                </MudTooltip>
+            }
+            @if (CurrentViewers.Count > 5)
+            {
+                <MudTooltip Text="@($"and {CurrentViewers.Count - 5} more...")">
+                    <MudAvatar Size="Size.Small" Color="Color.Default" Style="margin-right: 4px;">
+                        +@(CurrentViewers.Count - 5)
+                    </MudAvatar>
+                </MudTooltip>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .agent-presence-container {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background-color: var(--mud-palette-background);
+        border: 1px solid var(--mud-palette-lines-default);
+        border-radius: 8px;
+        padding: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        z-index: 10;
+    }
+
+    .agent-avatars {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .agent-presence-container .mud-avatar {
+        transition: transform 0.2s ease-in-out;
+    }
+
+    .agent-presence-container .mud-avatar:hover {
+        transform: scale(1.1);
+    }
+</style>
+
+@code {
+    [Parameter] public string ConversationId { get; set; } = string.Empty;
+    [Parameter] public List<ConversationViewerDto>? CurrentViewers { get; set; }
+
+    private string GetInitials(string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName))
+            return "A";
+
+        var words = displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length >= 2)
+        {
+            return $"{words[0][0]}{words[1][0]}".ToUpper();
+        }
+        return displayName[0].ToString().ToUpper();
+    }
+}

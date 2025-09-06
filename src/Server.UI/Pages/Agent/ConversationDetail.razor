@@ -5,13 +5,18 @@
 @using CleanArchitecture.Blazor.Application.Common.Security
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationById
 @using CleanArchitecture.Blazor.Server.UI.Components.Conversations
+@using CleanArchitecture.Blazor.Server.UI.Components.Common
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
 @using Microsoft.AspNetCore.SignalR.Client
+@using System.Timers
 @* @attribute [Authorize(Policy = Permissions.Conversations.View)] *@
 @inject IMediator Mediator
 @inject IStringLocalizer<SharedResource> L
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
+@inject SignalRConnectionService SignalRService
 @implements IAsyncDisposable
 
 <PageTitle>@L["Conversation Details"] - @(conversationDetails?.Conversation.ConversationReference ?? ConversationId)</PageTitle>
@@ -70,6 +75,14 @@
                     </MudChip>
                     <MudChip T="string" Size="Size.Medium" Color="Color.Info" Variant="Variant.Outlined">
                         @conversationDetails.Conversation.Mode
+                    </MudChip>
+                    <!-- Connection Status Indicator -->
+                    <MudChip T="string" Size="Size.Small" 
+                            Color="@_connectionColor" 
+                            Variant="Variant.Text"
+                            Icon="@_connectionIcon"
+                            Class="connection-status">
+                        @_connectionStatus
                     </MudChip>
                     <MudMenu Icon="@Icons.Material.Filled.MoreVert" 
                             AnchorOrigin="Origin.BottomRight" 
@@ -189,7 +202,10 @@
 
                 <!-- Right Column - Messages -->
                 <MudItem xs="12" md="8">
-                    <MudCard Style="height: 700px; display: flex; flex-direction: column;">
+                    <MudCard Style="height: 700px; display: flex; flex-direction: column; position: relative;">
+                        <!-- Agent Presence Indicator -->
+                        <AgentPresenceIndicator ConversationId="@ConversationId" CurrentViewers="@_conversationViewers" />
+                        
                         <MudCardHeader Class="pb-2">
                             <CardHeaderContent>
                                 <div class="d-flex align-center justify-space-between">
@@ -200,7 +216,7 @@
                                 </div>
                             </CardHeaderContent>
                         </MudCardHeader>
-                        <MudCardContent Style="flex: 1; overflow-y: auto; padding: 16px;" Class="message-container">
+                        <MudCardContent Style="flex: 1; overflow-y: auto; padding: 16px;" Class="message-container" id="messages-container">
                             @if (conversationDetails.Messages?.Any() == true)
                             {
                                 <div class="d-flex flex-column gap-4" id="messages-container">
@@ -219,9 +235,9 @@
                                                             @(message.UserName ?? GetRoleDisplayName(message.Role))
                                                         </MudText>
                                                     </div>
-                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                        @message.Timestamp.ToString("HH:mm")
-                                                    </MudText>
+                                                    <TimeAgo Timestamp="@message.Timestamp" 
+                                                            Class="mud-typography-caption mud-secondary-text"
+                                                            AutoRefresh="true" />
                                                 </div>
                                                 <div class="message-content">
                                                     <MudText Typo="Typo.body2" Class="message-text">
@@ -242,6 +258,8 @@
                                         </div>
                                     }
                                 </div>
+                                <!-- Typing Indicator -->
+                                <TypingIndicator ConversationId="@ConversationId" Visible="@_customerTyping" />
                             }
                             else
                             {
@@ -452,11 +470,23 @@
     private bool _sendingMessage = false;
     private ConversationDetailsDto? conversationDetails;
     private HubConnection? _hubConnection;
+    
+    // Real-time state
+    private bool _customerTyping = false;
+    private List<ConversationViewerDto> _conversationViewers = new();
+    private string _connectionStatus = "Connecting...";
+    private Color _connectionColor = Color.Warning;
+    private string _connectionIcon = Icons.Material.Filled.Sync;
+    private string _originalTitle = string.Empty;
+    private int _unreadMessages = 0;
+    private Timer? _typingTimer;
 
     protected override async Task OnInitializedAsync()
     {
+        _originalTitle = "Conversation Details";
         await LoadConversation();
         await InitializeSignalR();
+        await JoinConversationViewers();
     }
     
     protected override async Task OnParametersSetAsync()
@@ -467,6 +497,10 @@
             await _hubConnection.InvokeAsync("LeaveConversationGroup", ConversationId);
             await _hubConnection.InvokeAsync("JoinConversationGroup", ConversationId);
         }
+        
+        // Reset notification count when switching conversations
+        _unreadMessages = 0;
+        await UpdateBrowserTitle();
     }
 
     private async Task LoadConversation()
@@ -605,33 +639,203 @@
     {
         try
         {
-            _hubConnection = new HubConnectionBuilder()
-                .WithUrl(Navigation.ToAbsoluteUri("/signalRHub"))
-                .WithAutomaticReconnect()
-                .Build();
+            // Use the SignalRConnectionService to get the connection
+            await SignalRService.EnsureConnectedAsync();
+            _hubConnection = SignalRService.HubConnection;
 
-            // Subscribe to real-time message updates
-            _hubConnection.On<int, string, string, bool>("NewConversationMessage", OnNewConversationMessage);
-            
-            // Subscribe to conversation status changes
-            _hubConnection.On<int, string, string>("ConversationAssigned", OnConversationAssigned);
-            _hubConnection.On<int, string>("ConversationCompleted", OnConversationCompleted);
+            if (_hubConnection != null)
+            {
+                // Connection state handlers
+                _hubConnection.Reconnecting += OnReconnecting;
+                _hubConnection.Reconnected += OnReconnected;
+                _hubConnection.Closed += OnConnectionClosed;
 
-            await _hubConnection.StartAsync();
-            
-            // Join conversation group for targeted updates
-            await _hubConnection.InvokeAsync("JoinConversationGroup", ConversationId);
+                // Subscribe to real-time message updates
+                _hubConnection.On<ConversationMessageDto>("NewMessageReceived", OnNewMessageReceived);
+                
+                // Subscribe to conversation status changes
+                _hubConnection.On<string, ConversationStatus>("ConversationStatusChanged", OnConversationStatusChanged);
+                
+                // Subscribe to typing indicators
+                _hubConnection.On<string, bool>("CustomerTyping", OnCustomerTyping);
+                
+                // Subscribe to agent presence updates
+                _hubConnection.On<string, string, string>("AgentJoinedConversation", OnAgentJoinedConversation);
+                _hubConnection.On<string, string>("AgentLeftConversation", OnAgentLeftConversation);
+                _hubConnection.On<string, List<ConversationViewerDto>>("ConversationViewersUpdated", OnConversationViewersUpdated);
+                
+                // Legacy message handlers for backward compatibility
+                _hubConnection.On<string, string, string, bool>("NewConversationMessage", OnLegacyNewConversationMessage);
+                _hubConnection.On<int, string, string>("ConversationAssigned", OnConversationAssigned);
+                _hubConnection.On<int, string>("ConversationCompleted", OnConversationCompleted);
+
+                UpdateConnectionStatus("connected");
+                
+                // Join conversation group for targeted updates
+                await _hubConnection.InvokeAsync("JoinConversationGroup", ConversationId);
+            }
+            else
+            {
+                UpdateConnectionStatus("error");
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"SignalR connection error: {ex.Message}");
+            UpdateConnectionStatus("error");
         }
     }
 
-    private async Task OnNewConversationMessage(int conversationId, string from, string message, bool isFromAgent)
+    // Enhanced real-time event handlers
+    private Task OnReconnecting(Exception? exception)
+    {
+        UpdateConnectionStatus("reconnecting");
+        return Task.CompletedTask;
+    }
+
+    private Task OnReconnected(string? connectionId)
+    {
+        UpdateConnectionStatus("connected");
+        return InvokeAsync(async () =>
+        {
+            await _hubConnection!.InvokeAsync("JoinConversationGroup", ConversationId);
+            StateHasChanged();
+        });
+    }
+
+    private Task OnConnectionClosed(Exception? exception)
+    {
+        UpdateConnectionStatus("disconnected");
+        return Task.CompletedTask;
+    }
+
+    private async Task OnNewMessageReceived(ConversationMessageDto message)
+    {
+        await InvokeAsync(async () =>
+        {
+            if (conversationDetails?.Messages != null)
+            {
+                conversationDetails.Messages.Add(message);
+                
+                // Check if user is near bottom for auto-scroll
+                var shouldScroll = await JSRuntime.InvokeAsync<bool>("conversationRealtime.isNearBottom", "messages-container");
+                
+                StateHasChanged();
+                
+                if (shouldScroll)
+                {
+                    await ScrollToBottom();
+                }
+                
+                // Handle notifications if page is not visible
+                if (!await IsPageVisible())
+                {
+                    _unreadMessages++;
+                    await UpdateBrowserTitle();
+                    await PlayNotificationSound();
+                }
+            }
+        });
+    }
+
+    private async Task OnConversationStatusChanged(string conversationId, ConversationStatus status)
+    {
+        if (conversationId == ConversationId)
+        {
+            await InvokeAsync(async () =>
+            {
+                if (conversationDetails != null)
+                {
+                    conversationDetails.Conversation.Status = status;
+                    StateHasChanged();
+                    Snackbar.Add($"Conversation status changed to {status}", Severity.Info);
+                }
+            });
+        }
+    }
+
+    private async Task OnCustomerTyping(string conversationId, bool isTyping)
+    {
+        if (conversationId == ConversationId)
+        {
+            await InvokeAsync(() =>
+            {
+                _customerTyping = isTyping;
+                StateHasChanged();
+                
+                // Auto-hide typing indicator after 5 seconds
+                if (isTyping)
+                {
+                    _typingTimer?.Dispose();
+                    _typingTimer = new Timer(5000);
+                    _typingTimer.Elapsed += (s, e) =>
+                    {
+                        InvokeAsync(() =>
+                        {
+                            _customerTyping = false;
+                            StateHasChanged();
+                            _typingTimer?.Dispose();
+                        });
+                    };
+                    _typingTimer.AutoReset = false;
+                    _typingTimer.Start();
+                }
+            });
+        }
+    }
+
+    private async Task OnAgentJoinedConversation(string conversationId, string agentId, string agentName)
+    {
+        if (conversationId == ConversationId)
+        {
+            await InvokeAsync(() =>
+            {
+                var existing = _conversationViewers.FirstOrDefault(v => v.UserId == agentId);
+                if (existing == null)
+                {
+                    _conversationViewers.Add(new ConversationViewerDto
+                    {
+                        UserId = agentId,
+                        UserName = agentName,
+                        DisplayName = agentName,
+                        JoinedAt = DateTime.UtcNow,
+                        IsCurrentUser = false
+                    });
+                    StateHasChanged();
+                }
+            });
+        }
+    }
+
+    private async Task OnAgentLeftConversation(string conversationId, string agentId)
+    {
+        if (conversationId == ConversationId)
+        {
+            await InvokeAsync(() =>
+            {
+                _conversationViewers.RemoveAll(v => v.UserId == agentId);
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task OnConversationViewersUpdated(string conversationId, List<ConversationViewerDto> viewers)
+    {
+        if (conversationId == ConversationId)
+        {
+            await InvokeAsync(() =>
+            {
+                _conversationViewers = viewers;
+                StateHasChanged();
+            });
+        }
+    }
+
+    // Legacy handler for backward compatibility
+    private async Task OnLegacyNewConversationMessage(string conversationId, string from, string message, bool isFromAgent)
     {
         // Only update if this is our conversation
-        if (conversationId.ToString() == ConversationId && conversationDetails != null)
+        if (conversationId == ConversationId && conversationDetails != null)
         {
             await InvokeAsync(async () =>
             {
@@ -641,6 +845,14 @@
                 
                 // Scroll to bottom of messages
                 await ScrollToBottom();
+                
+                // Handle notifications if page is not visible
+                if (!await IsPageVisible())
+                {
+                    _unreadMessages++;
+                    await UpdateBrowserTitle();
+                    await PlayNotificationSound();
+                }
             });
         }
     }
@@ -696,7 +908,7 @@
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("scrollToBottom", "messages-container");
+            await JSRuntime.InvokeVoidAsync("conversationRealtime.scrollToBottom", "messages-container");
         }
         catch
         {
@@ -704,14 +916,115 @@
         }
     }
 
+    // New helper methods for real-time features
+    private void UpdateConnectionStatus(string status)
+    {
+        (_connectionStatus, _connectionColor, _connectionIcon) = status switch
+        {
+            "connected" => ("Connected", Color.Success, Icons.Material.Filled.CheckCircle),
+            "reconnecting" => ("Reconnecting...", Color.Warning, Icons.Material.Filled.Sync),
+            "disconnected" => ("Disconnected", Color.Error, Icons.Material.Filled.Error),
+            "error" => ("Connection Error", Color.Error, Icons.Material.Filled.Error),
+            _ => ("Unknown", Color.Default, Icons.Material.Filled.Help)
+        };
+        
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task UpdateBrowserTitle()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("conversationRealtime.updateTabTitle", _originalTitle, _unreadMessages);
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+    }
+
+    private async Task PlayNotificationSound()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("conversationRealtime.playNotificationSound");
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+    }
+
+    private async Task<bool> IsPageVisible()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>("eval", "!document.hidden");
+        }
+        catch
+        {
+            return true; // Assume visible if we can't check
+        }
+    }
+
+    private async Task JoinConversationViewers()
+    {
+        try
+        {
+            // In a real implementation, you might call a command to track viewers
+            // For now, we'll just add ourselves to the local viewers list
+            var currentUserId = "current-user"; // You'd get this from user context
+            var currentUserName = "Current Agent"; // You'd get this from user context
+            
+            _conversationViewers.Add(new ConversationViewerDto
+            {
+                UserId = currentUserId,
+                UserName = currentUserName,
+                DisplayName = currentUserName,
+                JoinedAt = DateTime.UtcNow,
+                IsCurrentUser = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error joining conversation viewers: {ex.Message}");
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        if (_hubConnection != null)
+        try
         {
-            await _hubConnection.DisposeAsync();
+            _typingTimer?.Dispose();
+            
+            if (_hubConnection != null)
+            {
+                // Unsubscribe from events
+                _hubConnection.Remove("NewMessageReceived");
+                _hubConnection.Remove("ConversationStatusChanged");
+                _hubConnection.Remove("CustomerTyping");
+                _hubConnection.Remove("AgentJoinedConversation");
+                _hubConnection.Remove("AgentLeftConversation");
+                _hubConnection.Remove("ConversationViewersUpdated");
+                _hubConnection.Remove("NewConversationMessage");
+                _hubConnection.Remove("ConversationAssigned");
+                _hubConnection.Remove("ConversationCompleted");
+                
+                // Leave conversation group but don't dispose the shared connection
+                await _hubConnection.InvokeAsync("LeaveConversationGroup", ConversationId);
+            }
+            
+            // Reset browser title
+            await JSRuntime.InvokeVoidAsync("conversationRealtime.updateTabTitle", _originalTitle, 0);
         }
+        catch
+        {
+            // Ignore cleanup errors
+        }
+        
         GC.SuppressFinalize(this);
     }
 }
 
 <script src="~/js/conversations.js"></script>
+<script src="~/js/conversation-realtime.js"></script>

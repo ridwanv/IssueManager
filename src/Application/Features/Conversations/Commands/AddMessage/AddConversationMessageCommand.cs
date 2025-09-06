@@ -15,13 +15,16 @@ public class AddConversationMessageCommandHandler : IRequestHandler<AddConversat
 {
     private readonly IApplicationDbContextFactory _dbContextFactory;
     private readonly IMapper _mapper;
+    private readonly IApplicationHubWrapper _hubWrapper;
 
     public AddConversationMessageCommandHandler(
         IApplicationDbContextFactory dbContextFactory,
-        IMapper mapper)
+        IMapper mapper,
+        IApplicationHubWrapper hubWrapper)
     {
         _dbContextFactory = dbContextFactory;
         _mapper = mapper;
+        _hubWrapper = hubWrapper;
     }
 
     public async Task<Result<int>> Handle(AddConversationMessageCommand request, CancellationToken cancellationToken)
@@ -63,6 +66,13 @@ public class AddConversationMessageCommandHandler : IRequestHandler<AddConversat
         conversation.LastActivityAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
+
+        // Broadcast the new message to connected clients
+        await _hubWrapper.BroadcastNewConversationMessage(
+            conversation.ConversationReference,
+            message.UserName ?? "User",
+            message.Content,
+            message.Role == "agent");
 
         return await Result<int>.SuccessAsync(message.Id);
     }

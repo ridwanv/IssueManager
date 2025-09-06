@@ -50,4 +50,12 @@ public interface ISignalRHub
     Task ReceiveEscalationPopup(object escalationPopupDto);
     Task DismissEscalationPopup(string conversationId);
     Task NotifyEscalationAccepted(string conversationId);
+    
+    // Real-time conversation updates
+    Task NewMessageReceived(object messageDto);
+    Task ConversationStatusChanged(string conversationId, ConversationStatus status);
+    Task CustomerTyping(string conversationId, bool isTyping);
+    Task AgentJoinedConversation(string conversationId, string agentId, string agentName);
+    Task AgentLeftConversation(string conversationId, string agentId);
+    Task ConversationViewersUpdated(string conversationId, object viewers);
 }

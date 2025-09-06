@@ -315,4 +315,50 @@ public class ServerHub : Hub<ISignalRHub>
         // Dismiss popup for all other agents
         await Clients.GroupExcept("Agents", Context.ConnectionId).DismissEscalationPopup(conversationId);
     }
+
+    // Real-time conversation updates
+    public async Task JoinConversationGroup(string conversationId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"Conversation_{conversationId}");
+        
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userName = Context.User?.Identity?.Name ?? "Agent";
+        
+        if (!string.IsNullOrEmpty(userId))
+        {
+            await Clients.Group($"Conversation_{conversationId}").AgentJoinedConversation(conversationId, userId, userName);
+        }
+    }
+
+    public async Task LeaveConversationGroup(string conversationId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Conversation_{conversationId}");
+        
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        
+        if (!string.IsNullOrEmpty(userId))
+        {
+            await Clients.Group($"Conversation_{conversationId}").AgentLeftConversation(conversationId, userId);
+        }
+    }
+
+    public async Task BroadcastNewMessageToAgents(string conversationId, object messageDto)
+    {
+        await Clients.Group($"Conversation_{conversationId}").NewMessageReceived(messageDto);
+    }
+
+    public async Task BroadcastConversationStatusChanged(string conversationId, ConversationStatus status)
+    {
+        await Clients.Group($"Conversation_{conversationId}").ConversationStatusChanged(conversationId, status);
+    }
+
+    public async Task BroadcastCustomerTyping(string conversationId, bool isTyping)
+    {
+        await Clients.Group($"Conversation_{conversationId}").CustomerTyping(conversationId, isTyping);
+    }
+
+    public async Task BroadcastConversationViewersUpdated(string conversationId, object viewers)
+    {
+        await Clients.Group($"Conversation_{conversationId}").ConversationViewersUpdated(conversationId, viewers);
+    }
 }

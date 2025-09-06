@@ -1,0 +1,78 @@
+@using System.Timers
+@implements IDisposable
+
+<MudTooltip Text="@Timestamp.ToString("MMM dd, yyyy HH:mm:ss")">
+    <span class="@Class" style="@Style">@_displayText</span>
+</MudTooltip>
+
+@code {
+    [Parameter] public DateTime Timestamp { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public bool AutoRefresh { get; set; } = true;
+
+    private string _displayText = string.Empty;
+    private Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        UpdateDisplayText();
+        
+        if (AutoRefresh)
+        {
+            _timer = new Timer(30000); // Update every 30 seconds
+            _timer.Elapsed += OnTimerElapsed;
+            _timer.Start();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        UpdateDisplayText();
+    }
+
+    private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            UpdateDisplayText();
+            StateHasChanged();
+        });
+    }
+
+    private void UpdateDisplayText()
+    {
+        var timeSpan = DateTime.UtcNow - Timestamp;
+        
+        if (timeSpan.TotalMinutes < 1)
+        {
+            _displayText = "just now";
+        }
+        else if (timeSpan.TotalMinutes < 60)
+        {
+            var minutes = (int)timeSpan.TotalMinutes;
+            _displayText = $"{minutes} minute{(minutes == 1 ? "" : "s")} ago";
+        }
+        else if (timeSpan.TotalHours < 24)
+        {
+            var hours = (int)timeSpan.TotalHours;
+            _displayText = $"{hours} hour{(hours == 1 ? "" : "s")} ago";
+        }
+        else if (timeSpan.TotalDays < 7)
+        {
+            var days = (int)timeSpan.TotalDays;
+            _displayText = $"{days} day{(days == 1 ? "" : "s")} ago";
+        }
+        else
+        {
+            _displayText = Timestamp.ToString("MMM dd, yyyy");
+        }
+    }
+
+    public void Dispose()
+    {
+        _timer?.Stop();
+        _timer?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+}
