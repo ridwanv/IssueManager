@@ -2,9 +2,15 @@
 @inherits LayoutComponentBase
 @using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
 @using CleanArchitecture.Blazor.Application.Common.Extensions
+@using CleanArchitecture.Blazor.Server.UI.Components.Conversations
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.Logging
 @inject IUserProfileState UserProfileState
 @inject LayoutService LayoutService
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
 @implements IDisposable
+@implements IAsyncDisposable
 <MudLayout>
     <AuthorizeView>
         <NotAuthorized>
@@ -40,6 +46,9 @@
             </MudMainContent>
           
             <UserLoginState />
+            
+            <!-- Global Escalation Popup Service -->
+            <EscalationPopupService />
         </Authorized>
     </AuthorizeView>
 </MudLayout>
@@ -66,14 +75,18 @@
             await UserProfileState.EnsureInitializedAsync(userId);
             UserProfile = UserProfileState.Value;
         }
-        
-      
     }
      
 
     public void Dispose()
     {
         UserProfileState.Changed -= OnUserProfileChanged;
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        UserProfileState.Changed -= OnUserProfileChanged;
+        GC.SuppressFinalize(this);
     }
     
     protected override void OnParametersSet()

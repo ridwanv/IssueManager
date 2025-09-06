@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
@@ -34,7 +34,7 @@ public class GetConversationByIdQueryHandler : IRequestHandler<GetConversationBy
                 .Include(c => c.Messages)
                 .Include(c => c.Participants)
                 .Include(c => c.Handoffs)
-                .FirstOrDefaultAsync(c => c.ConversationId == request.ConversationId, cancellationToken);
+                .FirstOrDefaultAsync(c => c.ConversationReference == request.ConversationId, cancellationToken);
 
             if (conversation == null)
             {
@@ -76,7 +76,7 @@ public class GetConversationByIdQueryHandler : IRequestHandler<GetConversationBy
                 HandoffHistory = conversation.Handoffs.OrderByDescending(h => h.InitiatedAt).Select(h => new ConversationHandoffDto
                 {
                     Id = h.Id,
-                    ConversationId = h.ConversationId,
+                    ConversationId = h.ConversationReference,
                     HandoffType = h.HandoffType,
                     FromParticipantType = h.FromParticipantType,
                     ToParticipantType = h.ToParticipantType,

@@ -336,6 +336,18 @@ public static class DependencyInjection
             options.LoginPath = LOGIN_PATH;
             options.Cookie.SameSite = SameSiteMode.Strict;
             options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Events.OnRedirectToLogin = context =>
+            {
+                if (context.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+                {
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                }
+                else
+                {
+                    context.Response.Redirect(context.RedirectUri);
+                }
+                return Task.CompletedTask;
+            };
         });
         services.AddDataProtection().PersistKeysToDbContext<ApplicationDbContext>();
 

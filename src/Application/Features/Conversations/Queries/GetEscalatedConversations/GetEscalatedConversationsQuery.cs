@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
@@ -35,7 +35,7 @@ public class GetEscalatedConversationsQueryHandler : IRequestHandler<GetEscalate
             .Select(c => new ConversationDto
             {
                 Id = c.Id,
-                ConversationId = c.ConversationId,
+                ConversationReference = c.ConversationReference,
                 WhatsAppPhoneNumber = c.WhatsAppPhoneNumber,
                 Status = c.Status,
                 Mode = c.Mode,

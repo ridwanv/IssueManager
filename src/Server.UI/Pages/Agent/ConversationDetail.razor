@@ -1,16 +1,20 @@
-@page "/agent/conversations/{ConversationId}"
+﻿@page "/agent/conversations/{ConversationId}"
 @using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
 @using CleanArchitecture.Blazor.Application.Common.Models
 @using CleanArchitecture.Blazor.Domain.Enums
 @using CleanArchitecture.Blazor.Application.Common.Security
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationById
+@using CleanArchitecture.Blazor.Server.UI.Components.Conversations
+@using Microsoft.AspNetCore.SignalR.Client
 @* @attribute [Authorize(Policy = Permissions.Conversations.View)] *@
 @inject IMediator Mediator
 @inject IStringLocalizer<SharedResource> L
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
 
-<PageTitle>@L["Conversation Details"] - @(conversationDetails?.Conversation.ConversationId ?? ConversationId)</PageTitle>
+<PageTitle>@L["Conversation Details"] - @(conversationDetails?.Conversation.ConversationReference ?? ConversationId)</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="relative">
     @if (loading)
@@ -50,7 +54,7 @@
                                   Size="Size.Medium"
                                   Variant="Variant.Outlined" />
                     <div>
-                        <MudText Typo="Typo.h5">@L["Conversation"] @conversationDetails.Conversation.ConversationId</MudText>
+                        <MudText Typo="Typo.h5">@L["Conversation"] @conversationDetails.Conversation.ConversationReference</MudText>
                         <MudText Typo="Typo.body2" Color="Color.Secondary">
                             @L["Started"] @conversationDetails.Conversation.Created.ToString("MMM dd, yyyy HH:mm") • 
                             @L["Last activity"] @conversationDetails.Conversation.LastActivityAt.ToString("MMM dd, yyyy HH:mm")
@@ -252,6 +256,25 @@
                                 </div>
                             }
                         </MudCardContent>
+                        
+                        <!-- Message Input Component for Agent -->
+                        @if (conversationDetails.Conversation.Status == ConversationStatus.Active && 
+                             conversationDetails.Conversation.Mode == ConversationMode.Human &&
+                             !string.IsNullOrEmpty(conversationDetails.Conversation.CurrentAgentId))
+                        {
+                            <MessageInputComponent ConversationId="@ConversationId"
+                                                 OnMessageSent="HandleNewMessage"
+                                                 Disabled="_sendingMessage" />
+                        }
+                        else if (conversationDetails.Conversation.Mode == ConversationMode.Escalating)
+                        {
+                            <div class="message-input-placeholder">
+                                <MudAlert Severity="Severity.Info" Class="ma-4">
+                                    <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Class="mr-2" />
+                                    This conversation is escalated and waiting for agent acceptance.
+                                </MudAlert>
+                            </div>
+                        }
                     </MudCard>
                 </MudItem>
             </MudGrid>
@@ -426,11 +449,24 @@
     [Parameter] public string ConversationId { get; set; } = default!;
     
     private bool loading = true;
+    private bool _sendingMessage = false;
     private ConversationDetailsDto? conversationDetails;
+    private HubConnection? _hubConnection;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadConversation();
+        await InitializeSignalR();
+    }
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_hubConnection?.State == HubConnectionState.Connected)
+        {
+            // Leave the old conversation group and join the new one
+            await _hubConnection.InvokeAsync("LeaveConversationGroup", ConversationId);
+            await _hubConnection.InvokeAsync("JoinConversationGroup", ConversationId);
+        }
     }
 
     private async Task LoadConversation()
@@ -564,4 +600,118 @@
             _ => Color.Default
         };
     }
+    
+    private async Task InitializeSignalR()
+    {
+        try
+        {
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/signalRHub"))
+                .WithAutomaticReconnect()
+                .Build();
+
+            // Subscribe to real-time message updates
+            _hubConnection.On<int, string, string, bool>("NewConversationMessage", OnNewConversationMessage);
+            
+            // Subscribe to conversation status changes
+            _hubConnection.On<int, string, string>("ConversationAssigned", OnConversationAssigned);
+            _hubConnection.On<int, string>("ConversationCompleted", OnConversationCompleted);
+
+            await _hubConnection.StartAsync();
+            
+            // Join conversation group for targeted updates
+            await _hubConnection.InvokeAsync("JoinConversationGroup", ConversationId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR connection error: {ex.Message}");
+        }
+    }
+
+    private async Task OnNewConversationMessage(int conversationId, string from, string message, bool isFromAgent)
+    {
+        // Only update if this is our conversation
+        if (conversationId.ToString() == ConversationId && conversationDetails != null)
+        {
+            await InvokeAsync(async () =>
+            {
+                // Reload conversation to get updated messages
+                await LoadConversation();
+                StateHasChanged();
+                
+                // Scroll to bottom of messages
+                await ScrollToBottom();
+            });
+        }
+    }
+
+    private async Task OnConversationAssigned(int conversationId, string agentId, string agentName)
+    {
+        if (conversationId.ToString() == ConversationId)
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadConversation();
+                StateHasChanged();
+                Snackbar.Add($"Conversation assigned to {agentName}", Severity.Info);
+            });
+        }
+    }
+
+    private async Task OnConversationCompleted(int conversationId, string agentId)
+    {
+        if (conversationId.ToString() == ConversationId)
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadConversation();
+                StateHasChanged();
+                Snackbar.Add("Conversation has been completed", Severity.Info);
+            });
+        }
+    }
+
+    private async Task HandleNewMessage(string message)
+    {
+        try
+        {
+            _sendingMessage = true;
+            StateHasChanged();
+            
+            // Scroll to bottom to show the new message
+            await ScrollToBottom();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error handling new message: {ex.Message}");
+        }
+        finally
+        {
+            _sendingMessage = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("scrollToBottom", "messages-container");
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+        GC.SuppressFinalize(this);
+    }
 }
+
+<script src="~/js/conversations.js"></script>

@@ -1,0 +1,140 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.SendAgentMessage
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+
+<div class="message-input-container">
+    <MudTextField @bind-Value="_messageText"
+                  @onkeypress="HandleKeyPress"
+                  Placeholder="Type your message..."
+                  FullWidth="true"
+                  Variant="Variant.Outlined"
+                  Lines="2"
+                  MaxLines="5"
+                  AutoGrow="true"
+                  Disabled="@(Disabled || _sending)"
+                  Class="message-input-field"
+                  Adornment="Adornment.End"
+                  AdornmentIcon="@Icons.Material.Filled.Send"
+                  OnAdornmentClick="SendMessage" />
+    
+    <div class="message-input-actions">
+        <MudButton OnClick="SendMessage"
+                   StartIcon="@Icons.Material.Filled.Send"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Size="Size.Small"
+                   Loading="_sending"
+                   Disabled="@(Disabled || _sending || string.IsNullOrWhiteSpace(_messageText))"
+                   Class="send-button">
+            Send Message
+        </MudButton>
+        
+        @if (!string.IsNullOrWhiteSpace(_messageText))
+        {
+            <MudButton OnClick="ClearMessage"
+                       StartIcon="@Icons.Material.Filled.Clear"
+                       Variant="Variant.Text"
+                       Size="Size.Small"
+                       Class="clear-button">
+                Clear
+            </MudButton>
+        }
+    </div>
+</div>
+
+<style>
+    .message-input-container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+        background: var(--mud-palette-surface);
+        border-top: 1px solid var(--mud-palette-lines-default);
+        border-radius: 0 0 12px 12px;
+    }
+    
+    .message-input-field {
+        border-radius: 20px;
+    }
+    
+    .message-input-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .send-button {
+        border-radius: 20px;
+        padding: 8px 16px;
+    }
+    
+    .clear-button {
+        border-radius: 20px;
+    }
+</style>
+
+@code {
+    private string _messageText = string.Empty;
+    private bool _sending = false;
+
+    [Parameter] public string ConversationId { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnMessageSent { get; set; }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_messageText) || _sending || Disabled)
+            return;
+
+        _sending = true;
+        var messageToSend = _messageText.Trim();
+        
+        try
+        {
+            var command = new SendAgentMessageCommand
+            {
+                ConversationId = ConversationId,
+                Content = messageToSend
+            };
+
+            var result = await Mediator.Send(command);
+
+            if (result.Succeeded)
+            {
+                _messageText = string.Empty;
+                await OnMessageSent.InvokeAsync(messageToSend);
+                Snackbar.Add("Message sent successfully", Severity.Success);
+            }
+            else
+            {
+                var errorMessage = string.Join(", ", result.Errors ?? new[] { "Unknown error" });
+                Snackbar.Add($"Failed to send message: {errorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error sending message: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _sending = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        // Send on Enter, new line on Shift+Enter
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessage();
+        }
+    }
+
+    private void ClearMessage()
+    {
+        _messageText = string.Empty;
+        StateHasChanged();
+    }
+}

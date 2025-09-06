@@ -1,0 +1,307 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationContext
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AcceptEscalation
+@inject IMediator Mediator
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+@if (_showPopup && _escalationData != null)
+{
+    <MudOverlay Visible="_showPopup" DarkBackground="true" ZIndex="9999" Class="escalation-popup-overlay">
+        <MudPaper Class="escalation-popup pa-6" Style="max-width: 500px; margin: auto; border-radius: 16px; box-shadow: 0 24px 38px 3px rgba(0,0,0,.14);">
+            <MudText Typo="Typo.h6" Class="mb-4" Color="Color.Primary">
+                <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Class="mr-2"/>
+                Chat Escalation
+                @if (_escalationData.Priority > 1)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(_escalationData.Priority)" Variant="Variant.Filled" Class="ml-2">
+                        @GetPriorityText(_escalationData.Priority)
+                    </MudChip>
+                }
+            </MudText>
+            
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">Customer Information</MudText>
+                    <MudText Typo="Typo.body2"><strong>Name:</strong> @_escalationData.CustomerName</MudText>
+                    <MudText Typo="Typo.body2"><strong>Phone:</strong> @_escalationData.PhoneNumber</MudText>
+                </MudItem>
+                
+                <MudItem xs="12" Class="mt-3">
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">Escalation Details</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Reason:</strong> @_escalationData.EscalationReason
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <strong>Duration:</strong> @FormatDuration(_escalationData.ConversationDuration) | 
+                        <strong>Messages:</strong> @_escalationData.MessageCount
+                    </MudText>
+                </MudItem>
+
+                @if (!string.IsNullOrEmpty(_escalationData.LastMessage))
+                {
+                    <MudItem xs="12" Class="mt-3">
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">Last Message</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted" Style="font-style: italic;">
+                            "@TruncateMessage(_escalationData.LastMessage)"
+                        </MudText>
+                    </MudItem>
+                }
+            </MudGrid>
+            
+            <MudCardActions Class="justify-space-between mt-4 pa-0">
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    Escalated @FormatTimeAgo(_escalationData.EscalatedAt)
+                </MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudButton OnClick="IgnoreEscalation" 
+                              Variant="Variant.Text" 
+                              Size="Size.Small"
+                              Disabled="_processing">
+                        Ignore
+                    </MudButton>
+                    <MudButton OnClick="DeclineEscalation" 
+                              Variant="Variant.Outlined" 
+                              Color="Color.Warning"
+                              Size="Size.Small"
+                              Disabled="_processing">
+                        Decline
+                    </MudButton>
+                    <MudButton OnClick="AcceptEscalation" 
+                              Variant="Variant.Filled" 
+                              Color="Color.Primary"
+                              Size="Size.Small"
+                              Loading="_processing">
+                        Accept & View
+                    </MudButton>
+                </MudStack>
+            </MudCardActions>
+        </MudPaper>
+    </MudOverlay>
+}
+
+<style>
+    .escalation-popup-overlay {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .escalation-popup {
+        animation: popup-appear 0.3s ease-out;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    
+    @@keyframes popup-appear {
+        from {
+            opacity: 0;
+            transform: scale(0.8) translateY(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+    }
+</style>
+
+@code {
+    private bool _showPopup = false;
+    private bool _processing = false;
+    private EscalationPopupDto? _escalationData;
+    private int? _timeoutHandle;
+
+    [Parameter] public EventCallback<string> OnEscalationAccepted { get; set; }
+    [Parameter] public EventCallback<string> OnEscalationDeclined { get; set; }
+    [Parameter] public EventCallback<string> OnEscalationIgnored { get; set; }
+
+    public async Task ShowEscalation(string conversationId)
+    {
+        try
+        {
+            var query = new GetConversationContextQuery { ConversationId = conversationId };
+            var result = await Mediator.Send(query);
+
+            if (result.Succeeded)
+            {
+                _escalationData = result.Data;
+                _showPopup = true;
+                StateHasChanged();
+                
+                await PlayNotificationSound();
+                
+                // Auto-dismiss after 60 seconds
+                _timeoutHandle = await JS.InvokeAsync<int>("setTimeout", 
+                    DotNetObjectReference.Create(this), 
+                    nameof(AutoDismissTimeout), 60000);
+            }
+            else
+            {
+                Snackbar.Add("Failed to load escalation details.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error showing escalation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async Task ShowEscalation(EscalationPopupDto escalationData)
+    {
+        try
+        {
+            _escalationData = escalationData;
+            _showPopup = true;
+            StateHasChanged();
+            
+            await PlayNotificationSound();
+            
+            // Auto-dismiss after 60 seconds
+            _timeoutHandle = await JS.InvokeAsync<int>("setTimeout", 
+                DotNetObjectReference.Create(this), 
+                nameof(AutoDismissTimeout), 60000);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error showing escalation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public void HidePopup()
+    {
+        _showPopup = false;
+        _escalationData = null;
+        _processing = false;
+        
+        if (_timeoutHandle.HasValue)
+        {
+            _ = JS.InvokeVoidAsync("clearTimeout", _timeoutHandle.Value);
+            _timeoutHandle = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task AcceptEscalation()
+    {
+        if (_escalationData == null || _processing) return;
+        
+        _processing = true;
+        StateHasChanged();
+
+        try
+        {
+            var command = new AcceptEscalationCommand { ConversationId = _escalationData.ConversationReference };
+            var result = await Mediator.Send(command);
+
+            if (result.Succeeded)
+            {
+                // Invoke the callback if it's set
+                if (OnEscalationAccepted.HasDelegate)
+                {
+                    await OnEscalationAccepted.InvokeAsync(_escalationData.ConversationReference);
+                }
+                
+                // Navigate to the conversation page
+                Navigation?.NavigateTo($"/agent/conversations/{_escalationData.ConversationReference}");
+                HidePopup();
+            }
+            else
+            {
+                Snackbar.Add("Failed to accept escalation.", Severity.Error);
+                _processing = false;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error accepting escalation: {ex.Message}", Severity.Error);
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeclineEscalation()
+    {
+        if (_escalationData == null) return;
+        
+        // Invoke the callback if it's set
+        if (OnEscalationDeclined.HasDelegate)
+        {
+            await OnEscalationDeclined.InvokeAsync(_escalationData.ConversationReference);
+        }
+        HidePopup();
+    }
+
+    private async Task IgnoreEscalation()
+    {
+        if (_escalationData == null) return;
+        
+        // Invoke the callback if it's set
+        if (OnEscalationIgnored.HasDelegate)
+        {
+            await OnEscalationIgnored.InvokeAsync(_escalationData.ConversationReference);
+        }
+        HidePopup();
+    }
+
+    [JSInvokable]
+    public void AutoDismissTimeout()
+    {
+        if (_escalationData != null)
+        {
+            _ = IgnoreEscalation();
+        }
+    }
+
+    private async Task PlayNotificationSound()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("playNotificationSound", "escalation");
+        }
+        catch
+        {
+            // Ignore JS errors for sound playback
+        }
+    }
+
+    private static Color GetPriorityColor(int priority) => priority switch
+    {
+        3 => Color.Error,
+        2 => Color.Warning,
+        _ => Color.Info
+    };
+
+    private static string GetPriorityText(int priority) => priority switch
+    {
+        3 => "CRITICAL",
+        2 => "HIGH",
+        _ => "STANDARD"
+    };
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        return $"{duration.Minutes}m {duration.Seconds}s";
+    }
+
+    private static string FormatTimeAgo(DateTime timestamp)
+    {
+        var elapsed = DateTime.UtcNow - timestamp;
+        if (elapsed.TotalMinutes < 1) return "just now";
+        if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m ago";
+        if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}h ago";
+        return timestamp.ToString("MMM d, HH:mm");
+    }
+
+    private static string TruncateMessage(string message, int maxLength = 80)
+    {
+        if (string.IsNullOrEmpty(message) || message.Length <= maxLength)
+            return message ?? string.Empty;
+        
+        return message[..(maxLength - 3)] + "...";
+    }
+}

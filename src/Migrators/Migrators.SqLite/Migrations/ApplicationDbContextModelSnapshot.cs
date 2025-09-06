@@ -82,6 +82,77 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.ToTable("Agents");
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.AgentNotificationPreferences", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApplicationUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AudioVolume")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CustomSoundUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("EnableAudioAlerts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("EnableBrowserNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("EnableEmailNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NotifyDuringBreak")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnCriticalPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnHighPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnStandardPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyWhenOffline")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ApplicationUserId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("AgentNotificationPreferences");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Attachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -252,7 +323,7 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ConversationId")
+                    b.Property<string>("ConversationReference")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -330,7 +401,7 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConversationId")
+                    b.HasIndex("ConversationReference")
                         .IsUnique();
 
                     b.HasIndex("LastActivityAt");
@@ -433,6 +504,11 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
                     b.Property<int>("ConversationId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("ConversationReference")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ConversationTranscript")
                         .HasMaxLength(450)
@@ -1652,6 +1728,17 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                 {
                     b.HasOne("CleanArchitecture.Blazor.Domain.Identity.ApplicationUser", "ApplicationUser")
                         .WithMany("Agents")
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApplicationUser");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.AgentNotificationPreferences", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Identity.ApplicationUser", "ApplicationUser")
+                        .WithMany()
                         .HasForeignKey("ApplicationUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

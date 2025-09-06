@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
+using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Enums;
 
@@ -38,7 +39,7 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
         
         // Check if conversation already exists
         var existingConversation = await db.Conversations
-            .FirstOrDefaultAsync(c => c.ConversationId == request.ConversationId, cancellationToken);
+            .FirstOrDefaultAsync(c => c.ConversationReference == request.ConversationId, cancellationToken);
             
         var isNewConversation = false;
         if (existingConversation != null)
@@ -57,7 +58,7 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
             // Create new conversation in escalated state
             var conversation = new Conversation
             {
-                ConversationId = request.ConversationId,
+                ConversationReference = request.ConversationId,
                 WhatsAppPhoneNumber = request.WhatsAppPhoneNumber,
                 Status = ConversationStatus.Active,
                 Mode = ConversationMode.Escalating,
@@ -82,6 +83,7 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
         var handoff = new ConversationHandoff
         {
             ConversationId = existingConversation.Id,
+            ConversationReference = existingConversation.ConversationReference,
             HandoffType = HandoffType.BotToHuman,
             FromParticipantType = ParticipantType.Bot,
             ToParticipantType = ParticipantType.Agent,
@@ -96,12 +98,72 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
         
         await db.SaveChangesAsync(cancellationToken);
         
-        // Notify agents via SignalR
+        // Create escalation popup data
+        var escalationPopup = new EscalationPopupDto
+        {
+            ConversationReference = existingConversation.ConversationReference,
+            CustomerName = ExtractCustomerName(request.WhatsAppPhoneNumber),
+            PhoneNumber = request.WhatsAppPhoneNumber ?? "Unknown",
+            EscalationReason = request.Reason,
+            Priority = DeterminePriority(request.Reason),
+            EscalatedAt = existingConversation.EscalatedAt ?? DateTime.UtcNow,
+            MessageCount = CountMessagesFromTranscript(request.ConversationTranscript),
+            ConversationDuration = existingConversation.Duration,
+            ConversationSummary = TruncateTranscript(request.ConversationTranscript, 200)
+        };
+        
+        // Notify agents via SignalR with both methods
         await _hubWrapper.BroadcastConversationEscalated(
-            existingConversation.Id, 
+            existingConversation.ConversationReference, 
             request.Reason, 
             request.WhatsAppPhoneNumber ?? "Unknown");
             
+        // Send escalation popup to available agents
+        await _hubWrapper.BroadcastEscalationPopupToAvailableAgents(escalationPopup);
+            
         return Result<int>.Success(existingConversation.Id);
+    }
+    
+    private static string ExtractCustomerName(string? phoneNumber)
+    {
+        if (string.IsNullOrEmpty(phoneNumber))
+            return "Unknown Customer";
+            
+        // For now, just use phone number as name
+        // TODO: Integrate with contact system to get actual names
+        return phoneNumber.StartsWith("+") ? phoneNumber : $"+{phoneNumber}";
+    }
+    
+    private static int DeterminePriority(string reason)
+    {
+        var lowerReason = reason?.ToLowerInvariant() ?? "";
+        
+        if (lowerReason.Contains("critical") || lowerReason.Contains("urgent") || lowerReason.Contains("emergency"))
+            return 3; // Critical
+        else if (lowerReason.Contains("high") || lowerReason.Contains("important") || lowerReason.Contains("priority"))
+            return 2; // High
+        else
+            return 1; // Standard
+    }
+    
+    private static int CountMessagesFromTranscript(string? transcript)
+    {
+        if (string.IsNullOrEmpty(transcript))
+            return 0;
+            
+        // Simple message counting - count occurrences of typical message indicators
+        var messageIndicators = new[] { "User:", "Bot:", "Agent:", "\n- " };
+        return messageIndicators.Sum(indicator => transcript.Split(indicator, StringSplitOptions.RemoveEmptyEntries).Length - 1);
+    }
+    
+    private static string? TruncateTranscript(string? transcript, int maxLength)
+    {
+        if (string.IsNullOrEmpty(transcript))
+            return null;
+            
+        if (transcript.Length <= maxLength)
+            return transcript;
+            
+        return transcript.Substring(0, maxLength) + "...";
     }
 }

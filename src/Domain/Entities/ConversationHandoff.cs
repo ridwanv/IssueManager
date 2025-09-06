@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Domain.Common.Entities;
@@ -9,8 +9,12 @@ namespace CleanArchitecture.Blazor.Domain.Entities;
 public class ConversationHandoff : BaseAuditableEntity, IMustHaveTenant
 {
     public int ConversationId { get; set; }
+
+    public string ConversationReference { get; set; }
     public virtual Conversation Conversation { get; set; } = default!;
     
+
+
     public HandoffType HandoffType { get; set; }
     public ParticipantType FromParticipantType { get; set; }
     public ParticipantType ToParticipantType { get; set; }

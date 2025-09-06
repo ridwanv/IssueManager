@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
@@ -30,14 +30,14 @@ public class AddConversationMessageCommandHandler : IRequestHandler<AddConversat
 
         // Get or create conversation record
         var conversation = await db.Conversations
-            .FirstOrDefaultAsync(c => c.ConversationId == request.Message.BotFrameworkConversationId, cancellationToken);
+            .FirstOrDefaultAsync(c => c.ConversationReference == request.Message.BotFrameworkConversationId, cancellationToken);
 
         if (conversation == null)
         {
             // Create new conversation record
             conversation = new Conversation
             {
-                ConversationId = request.Message.BotFrameworkConversationId,
+                ConversationReference = request.Message.BotFrameworkConversationId,
                 Status = Domain.Enums.ConversationStatus.Active,
                 Mode = Domain.Enums.ConversationMode.Bot,
                 LastActivityAt = DateTime.UtcNow,

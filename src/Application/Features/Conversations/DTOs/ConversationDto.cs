@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Domain.Enums;
@@ -8,7 +8,7 @@ namespace CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 public record ConversationDto
 {
     public int Id { get; set; }
-    public required string ConversationId { get; set; }
+    public required string ConversationReference { get; set; }
     public string? UserId { get; set; }
     public string? UserName { get; set; }
     public string? WhatsAppPhoneNumber { get; set; }
@@ -80,7 +80,7 @@ public record ConversationParticipantDto
 public record ConversationHandoffDto
 {
     public int Id { get; set; }
-    public int ConversationId { get; set; }
+    public string ConversationId { get; set; }
     public HandoffType HandoffType { get; set; }
     public ParticipantType FromParticipantType { get; set; }
     public ParticipantType ToParticipantType { get; set; }

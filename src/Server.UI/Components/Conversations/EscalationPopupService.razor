@@ -1,0 +1,165 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
+@inject IJSRuntime JS
+@inject ILogger<EscalationPopupService> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject SignalRConnectionService SignalRConnectionService
+@implements IAsyncDisposable
+
+<EscalationPopup @ref="_popup" 
+                OnEscalationAccepted="HandleEscalationAccepted"
+                OnEscalationDeclined="HandleEscalationDeclined" 
+                OnEscalationIgnored="HandleEscalationIgnored" />
+
+@code {
+    private EscalationPopup? _popup;
+    private HubConnection? _hubConnection;
+    private IDisposable? _receiveEscalationPopupHandler;
+    private IDisposable? _dismissEscalationPopupHandler;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await SignalRConnectionService.EnsureConnectedAsync();
+            _hubConnection = SignalRConnectionService.HubConnection;
+
+            if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
+            {
+                await SetupConnection();
+            }
+            else
+            {
+                Logger.LogWarning("EscalationPopupService: HubConnection not in a connected state. Current state: {State}", _hubConnection?.State);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "EscalationPopupService initialization failed.");
+        }
+    }
+    
+    private async Task SetupConnection()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var userId = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            
+            Logger.LogInformation("Setting up SignalR listeners for user {UserId}", userId);
+            
+            _receiveEscalationPopupHandler = _hubConnection.On<EscalationPopupDto>("ReceiveEscalationPopup", OnEscalationPopupReceived);
+            _dismissEscalationPopupHandler = _hubConnection.On<int>("DismissEscalationPopup", OnEscalationPopupDismissed);
+            
+            // Join the agents group
+            await _hubConnection.InvokeAsync("JoinAgentGroup");
+            Logger.LogInformation("EscalationPopupService - Joined agent group successfully");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "SetupConnection failed.");
+        }
+    }
+
+    private async Task OnEscalationPopupReceived(EscalationPopupDto escalationData)
+    {
+        try
+        {
+            Logger.LogInformation("🔔 RECEIVED ESCALATION POPUP! Conversation {ConversationId}, Customer: {CustomerName}, Reason: {Reason}", 
+                escalationData.ConversationReference, escalationData.CustomerName, escalationData.EscalationReason);
+            
+            if (_popup != null)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await _popup.ShowEscalation(escalationData);
+                    Logger.LogInformation("✅ Escalation popup displayed successfully for conversation {ConversationId}", escalationData.ConversationReference);
+                });
+            }
+            else
+            {
+                Logger.LogError("❌ EscalationPopup component reference is null - cannot display popup!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "💥 Error showing escalation popup for conversation {ConversationId}", escalationData.ConversationReference);
+        }
+    }
+
+    private async Task OnEscalationPopupDismissed(int conversationId)
+    {
+        try
+        {
+            Logger.LogInformation("Dismissing escalation popup for conversation {ConversationId}", conversationId);
+            
+            if (_popup != null)
+            {
+                await InvokeAsync(() =>
+                {
+                    _popup.HidePopup();
+                    return Task.CompletedTask;
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error dismissing escalation popup for conversation {ConversationId}", conversationId);
+        }
+    }
+
+    private async Task HandleEscalationAccepted(string conversationId)
+    {
+        Logger.LogInformation("Agent accepted escalation for conversation {ConversationId}", conversationId);
+        
+        // Notify hub that this agent accepted the escalation
+        if (_hubConnection != null)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("NotifyEscalationAccepted", conversationId);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error notifying escalation acceptance for conversation {ConversationId}", conversationId);
+            }
+        }
+    }
+
+    private Task HandleEscalationDeclined(string conversationId)
+    {
+        Logger.LogInformation("Agent declined escalation for conversation {ConversationId}", conversationId);
+        // Could add logic to track declined escalations for analytics
+        return Task.CompletedTask;
+    }
+
+    private Task HandleEscalationIgnored(string conversationId)
+    {
+        Logger.LogInformation("Agent ignored escalation for conversation {ConversationId}", conversationId);
+        // Could add logic to track ignored escalations for analytics
+        return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            try
+            {
+                _receiveEscalationPopupHandler?.Dispose();
+                _dismissEscalationPopupHandler?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error removing SignalR event handlers during disposal");
+            }
+        }
+        
+        GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
+    }
+}

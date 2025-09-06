@@ -132,58 +132,18 @@
                 }
             }
             
-            // Set initial load timeout
-            initialLoadTimeout = setTimeout(checkInitialLoad, 5000);
+            // Connection state monitoring
+            let blazorStarted = false;
             
-            // Enhanced reconnection configuration
-            window.Blazor = window.Blazor || {};
-            
-            // Override default reconnection behavior
-            const originalStart = window.Blazor.start;
-            window.Blazor.start = function(options) {
-                const enhancedOptions = {
-                    ...options,
-                    configureSignalR: function(builder) {
-                        builder
-                            .withUrl('/_blazor', {
-                                transport: 1 | 2, // WebSocket and ServerSentEvents
-                                skipNegotiation: false
-                            })
-                            .withAutomaticReconnect({
-                                nextRetryDelayInMilliseconds: function (previousRetryCount) {
-                                    // Progressive backoff: 0, 1s, 3s, 5s, 10s
-                                    const delays = [0, 1000, 3000, 5000, 10000];
-                                    return delays[previousRetryCount] || 15000;
-                                }
-                            });
-                        
-                        // Call original configureSignalR if provided
-                        if (options && options.configureSignalR) {
-                            options.configureSignalR(builder);
-                        }
-                    }
-                };
-                
-                if (originalStart) {
-                    return originalStart.call(this, enhancedOptions);
-                }
-            };
+            // Monitor for successful connection
+            document.addEventListener('blazor:started', function() {
+                blazorStarted = true;
+                console.log('Blazor connection successful');
+            });
             
             // Listen for connection events
             document.addEventListener('DOMContentLoaded', function() {
-                // Additional connection monitoring
-                let connectionCheckInterval = setInterval(function() {
-                    if (window.Blazor && window.Blazor._internal) {
-                        clearInterval(connectionCheckInterval);
-                        clearTimeout(initialLoadTimeout);
-                        console.log('Blazor fully initialized');
-                    }
-                }, 1000);
-                
-                // Clear interval after 30 seconds to prevent infinite checking
-                setTimeout(function() {
-                    clearInterval(connectionCheckInterval);
-                }, 30000);
+                console.log('Blazor initialization started');
             });
         })();
     </script>

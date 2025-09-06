@@ -212,6 +212,60 @@ namespace IssueManager.Bot.Controllers
         }
 
         /// <summary>
+        /// Endpoint for sending agent messages via WhatsApp
+        /// </summary>
+        [HttpPost("api/agent-message")]
+        public async Task<IActionResult> SendAgentMessageAsync([FromBody] AgentMessageRequest request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrEmpty(request.PhoneNumber) || 
+                    string.IsNullOrEmpty(request.Message) || request.ConversationId <= 0)
+                {
+                    _logger.LogWarning("Invalid agent message request - missing required fields");
+                    return BadRequest("PhoneNumber, Message, and ConversationId are required");
+                }
+
+                _logger.LogInformation("Sending agent message for conversation {ConversationId} to {PhoneNumber}", 
+                    request.ConversationId, request.PhoneNumber);
+
+                var success = await _whatsAppApiService.SendTextMessageAsync(request.PhoneNumber, request.Message);
+
+                if (success)
+                {
+                    _logger.LogInformation("Agent message sent successfully for conversation {ConversationId} to {PhoneNumber}", 
+                        request.ConversationId, request.PhoneNumber);
+                    
+                    return Ok(new { 
+                        Success = true, 
+                        Message = "Agent message sent successfully",
+                        ConversationId = request.ConversationId 
+                    });
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send agent message for conversation {ConversationId} to {PhoneNumber}", 
+                        request.ConversationId, request.PhoneNumber);
+                    return StatusCode(500, new { 
+                        Success = false, 
+                        Message = "Failed to send agent message",
+                        ConversationId = request.ConversationId 
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending agent message for conversation {ConversationId} to {PhoneNumber}", 
+                    request?.ConversationId, request?.PhoneNumber);
+                return StatusCode(500, new { 
+                    Success = false, 
+                    Message = "Internal server error",
+                    ConversationId = request?.ConversationId 
+                });
+            }
+        }
+
+        /// <summary>
         /// Endpoint for sending proactive WhatsApp messages
         /// </summary>
         [HttpPost("api/proactive-message")]
@@ -246,6 +300,17 @@ namespace IssueManager.Bot.Controllers
                 return StatusCode(500, new { Success = false, Message = "Internal server error" });
             }
         }
+    }
+
+    /// <summary>
+    /// Request model for agent messages
+    /// </summary>
+    public class AgentMessageRequest
+    {
+        public int ConversationId { get; set; }
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string AgentName { get; set; } = string.Empty;
     }
 
     /// <summary>

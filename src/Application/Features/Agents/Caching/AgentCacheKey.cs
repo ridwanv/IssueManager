@@ -10,9 +10,11 @@ public static class AgentCacheKey
     public const string GetByUserIdCacheKey = "agent-by-user-id-{0}";
     public const string GetCurrentAgentKey = "current-agent";
     public const string GetAvailableAgentsCacheKey = "available-agents";
+    public const string GetPreferencesCacheKey = "agent-preferences-{0}";
     
     public static string GetByIdKey(int id) => string.Format(GetByIdCacheKey, id);
     public static string GetByUserIdKey(string userId) => string.Format(GetByUserIdCacheKey, userId);
+    public static string GetPreferencesKey(string userId) => string.Format(GetPreferencesCacheKey, userId);
     
     public static IEnumerable<string> Tags => new[]
     {

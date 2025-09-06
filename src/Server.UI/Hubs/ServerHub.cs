@@ -10,6 +10,8 @@ using CleanArchitecture.Blazor.Domain.Identity;
 using CleanArchitecture.Blazor.Application.Features.Issues.DTOs;
 using CleanArchitecture.Blazor.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using CleanArchitecture.Blazor.Application.Common.Interfaces;
 
 namespace CleanArchitecture.Blazor.Server.UI.Hubs;
 
@@ -55,7 +57,7 @@ public class ServerHub : Hub<ISignalRHub>
                 await Clients.All.Disconnect(connectionId, connectionUser.UserName).ConfigureAwait(false);
             }    
         }
-        await base.OnConnectedAsync().ConfigureAwait(false);
+        await base.OnDisconnectedAsync(exception).ConfigureAwait(false);
     }
 
     public async Task SendMessage(string message)
@@ -193,16 +195,55 @@ public class ServerHub : Hub<ISignalRHub>
         }
     }
 
-    public async Task BroadcastConversationEscalated(int conversationId, string reason, string customerPhoneNumber)
+    public async Task BroadcastConversationEscalated(string conversationId, string reason, string customerPhoneNumber)
     {
         await Clients.Group("Agents").ConversationEscalated(conversationId, reason, customerPhoneNumber).ConfigureAwait(false);
     }
 
     // Enhanced notification methods for improved agent dashboard
-    public async Task BroadcastEscalationNotification(int conversationId, string reason, string customerPhoneNumber, int priority = 1, DateTime? escalatedAt = null)
+    public async Task BroadcastEscalationNotification(string conversationId, string reason, string customerPhoneNumber, int priority = 1, DateTime? escalatedAt = null)
     {
         var escalationTime = escalatedAt ?? DateTime.UtcNow;
+        
+        // Get filtered agents based on preferences
+        var targetedAgents = await GetFilteredAgentsForNotification(priority);
+        
+        // Send to all agents first (for dashboard updates)
         await Clients.Group("Agents").EscalationNotification(conversationId, reason, customerPhoneNumber, priority, escalationTime).ConfigureAwait(false);
+        
+        // Send targeted notifications with preference filtering
+        foreach (var agentUserId in targetedAgents)
+        {
+            await Clients.User(agentUserId).TargetedEscalationNotification(conversationId, reason, customerPhoneNumber, priority, escalationTime).ConfigureAwait(false);
+        }
+    }
+    
+    private async Task<List<string>> GetFilteredAgentsForNotification(int priority)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContextFactory = scope.ServiceProvider.GetRequiredService<IApplicationDbContextFactory>();
+            
+            await using var db = await dbContextFactory.CreateAsync();
+            
+            var filteredAgents = await db.AgentNotificationPreferences
+                .Include(p => p.ApplicationUser)
+                .Where(p => 
+                    (priority == 1 && p.NotifyOnStandardPriority) ||
+                    (priority == 2 && p.NotifyOnHighPriority) ||
+                    (priority == 3 && p.NotifyOnCriticalPriority))
+                .Where(p => p.EnableBrowserNotifications || p.EnableAudioAlerts || p.EnableEmailNotifications)
+                .Select(p => p.ApplicationUserId)
+                .ToListAsync();
+            
+            return filteredAgents;
+        }
+        catch (Exception)
+        {
+            // Fallback to all agents if preferences query fails
+            return new List<string>();
+        }
     }
 
     public async Task BroadcastAgentWorkloadUpdated(int agentId, int activeCount, int maxCount, bool isAvailable)
@@ -220,12 +261,12 @@ public class ServerHub : Hub<ISignalRHub>
         await Clients.Group("Agents").AgentAvailabilityChanged(agentId, status, isAvailable, agentName).ConfigureAwait(false);
     }
 
-    public async Task BroadcastConversationAssigned(int conversationId, string agentId, string agentName)
+    public async Task BroadcastConversationAssigned(string conversationId, string agentId, string agentName)
     {
         await Clients.All.ConversationAssigned(conversationId, agentId, agentName).ConfigureAwait(false);
     }
 
-    public async Task BroadcastConversationCompleted(int conversationId, string agentId)
+    public async Task BroadcastConversationCompleted(string conversationId, string agentId)
     {
         await Clients.All.ConversationCompleted(conversationId, agentId).ConfigureAwait(false);
     }
@@ -235,13 +276,13 @@ public class ServerHub : Hub<ISignalRHub>
         await Clients.Group("Agents").AgentStatusChanged(agentId, status).ConfigureAwait(false);
     }
 
-    public async Task BroadcastNewConversationMessage(int conversationId, string from, string message, bool isFromAgent)
+    public async Task BroadcastNewConversationMessage(string conversationId, string from, string message, bool isFromAgent)
     {
         await Clients.All.NewConversationMessage(conversationId, from, message, isFromAgent).ConfigureAwait(false);
     }
 
     // Agent-specific methods for conversation management
-    public async Task AcceptConversation(int conversationId)
+    public async Task AcceptConversation(string conversationId)
     {
         var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var userName = Context.User?.Identity?.Name ?? "Agent";
@@ -251,17 +292,27 @@ public class ServerHub : Hub<ISignalRHub>
         await BroadcastConversationAssigned(conversationId, userId, userName);
     }
 
-    public async Task SendConversationMessage(int conversationId, string message)
+    public async Task SendConversationMessage(string conversationId, string message)
     {
         var userName = Context.User?.Identity?.Name ?? "Agent";
         await BroadcastNewConversationMessage(conversationId, userName, message, true);
     }
 
-    public async Task CompleteConversation(int conversationId)
+    public async Task CompleteConversation(string conversationId)
     {
         var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId)) return;
 
         await BroadcastConversationCompleted(conversationId, userId);
+    }
+    
+    // Multi-agent popup methods for escalation acceptance
+    public async Task NotifyEscalationAccepted(string conversationId)
+    {
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return;
+        
+        // Dismiss popup for all other agents
+        await Clients.GroupExcept("Agents", Context.ConnectionId).DismissEscalationPopup(conversationId);
     }
 }

@@ -7,9 +7,13 @@ public interface IApplicationHubWrapper
     Task JobCompleted(int id,string message);
     
     // Agent escalation methods
-    Task BroadcastConversationEscalated(int conversationId, string reason, string customerPhoneNumber);
-    Task BroadcastConversationAssigned(int conversationId, string agentId, string agentName);
-    Task BroadcastConversationCompleted(int conversationId, string agentId);
+    Task BroadcastConversationEscalated(string conversationId, string reason, string customerPhoneNumber);
+    Task BroadcastConversationAssigned(string conversationId, string agentId, string agentName);
+    Task BroadcastConversationCompleted(string conversationId, string agentId);
     Task BroadcastAgentStatusChanged(string agentId, string status);
-    Task BroadcastNewConversationMessage(int conversationId, string from, string message, bool isFromAgent);
+    Task BroadcastNewConversationMessage(string conversationId, string from, string message, bool isFromAgent);
+    
+    // Multi-agent popup methods
+    Task BroadcastEscalationPopupToAvailableAgents(object escalationPopupDto);
+    Task NotifyEscalationAccepted(string conversationId, string acceptingAgentId);
 }

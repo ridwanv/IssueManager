@@ -41,6 +41,7 @@ public class ApplicationDbContext : IdentityDbContext<
     public DbSet<ConversationMessage> ConversationMessages { get; set; }
     public DbSet<ConversationAttachment> ConversationAttachments { get; set; }
     public DbSet<Agent> Agents { get; set; }
+    public DbSet<AgentNotificationPreferences> AgentNotificationPreferences { get; set; }
     public DbSet<ConversationParticipant> ConversationParticipants { get; set; }
     public DbSet<ConversationHandoff> ConversationHandoffs { get; set; }
 

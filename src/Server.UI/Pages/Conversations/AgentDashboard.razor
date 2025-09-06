@@ -1,4 +1,4 @@
-@page "/agent-dashboard"
+﻿@page "/agent-dashboard"
 @using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetEscalatedConversations
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAvailableAgents
@@ -7,6 +7,12 @@
 @using CleanArchitecture.Blazor.Application.Common.Security
 @using Microsoft.AspNetCore.SignalR.Client
 @using CleanArchitecture.Blazor.Server.UI.Hubs
+@using Microsoft.Extensions.Logging
+@using CleanArchitecture.Blazor.Server.UI.Components.Agent
+@using CleanArchitecture.Blazor.Application.Features.Agents.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Agents.Queries.GetPreferences
+@using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
 
 @attribute [Authorize(Policy = Permissions.Conversations.ViewAgentDashboard)]
 
@@ -14,6 +20,8 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject IUserContextAccessor CurrentUser
+@inject SignalRConnectionService SignalRConnectionService
 @implements IAsyncDisposable
 
 <script src="~/js/notifications.js"></script>
@@ -40,7 +48,7 @@
                       StartIcon="Icons.Material.Filled.Refresh" 
                       OnClick="RefreshData" 
                       Size="Size.Small"
-                      Disabled="@_isConnecting">
+                      Disabled="@(_connectionStatus == "Connecting..." || _connectionStatus == "Reconnecting...")">
                 Refresh
             </MudButton>
         </div>
@@ -206,12 +214,17 @@
                 }
             </MudPaper>
         </MudItem>
+        
+        <!-- Notification Preferences -->
+        <MudItem xs="12">
+            <NotificationPreferencesComponent />
+        </MudItem>
     </MudGrid>
 </MudContainer>
 
 @code {
     private List<ConversationDto> _escalatedConversations = new();
-    private List<AgentDto> _availableAgents = new();
+    private List<CleanArchitecture.Blazor.Application.Features.Conversations.DTOs.AgentDto> _availableAgents = new();
     private bool _loading = true;
     private bool _processing = false;
     private bool _autoAssign = false;
@@ -220,13 +233,20 @@
     
     // SignalR connection management
     private HubConnection? _hubConnection;
-    private bool _isConnected = false;
-    private bool _isConnecting = false;
     private string _connectionStatus = "Disconnected";
+    
+    // Notification preferences
+    private AgentNotificationPreferencesDto? _notificationPreferences;
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadNotificationPreferences();
         await RefreshData();
+        
+        // Delay SignalR connection to ensure page is fully loaded and authenticated
+        StateHasChanged();
+        await Task.Delay(500);
+        
         await InitializeSignalRConnection();
         await InitializeBrowserNotifications();
     }
@@ -270,7 +290,7 @@
         _processing = true;
         try
         {
-            var result = await Mediator.Send(new AssignAgentCommand(conversation.Id, "current-user-id")); // TODO: Get current user ID
+            var result = await Mediator.Send(new AssignAgentCommand(conversation.ConversationReference, "current-user-id")); // TODO: Get current user ID
             
             if (result.Succeeded)
             {
@@ -297,7 +317,7 @@
         _processing = true;
         try
         {
-            var result = await Mediator.Send(new CompleteConversationCommand(conversation.Id, "Conversation completed by agent"));
+            var result = await Mediator.Send(new CompleteConversationCommand(conversation.ConversationReference, "Conversation completed by agent"));
             
             if (result.Succeeded)
             {
@@ -328,21 +348,25 @@
     // SignalR Connection Management
     private async Task InitializeSignalRConnection()
     {
-        if (_isConnecting) return;
-        
-        _isConnecting = true;
         _connectionStatus = "Connecting...";
         StateHasChanged();
-        
+
         try
         {
-            _hubConnection = new HubConnectionBuilder()
-                .WithUrl(Navigation.ToAbsoluteUri(ISignalRHub.Url))
-                .WithAutomaticReconnect()
-                .Build();
+            await SignalRConnectionService.EnsureConnectedAsync();
+            _hubConnection = SignalRConnectionService.HubConnection;
+
+            if (_hubConnection is null)
+            {
+                _connectionStatus = "Failed: Connection service did not provide a connection.";
+                Snackbar.Add("Error connecting to real-time updates.", Severity.Error);
+                StartPollingMode();
+                return;
+            }
             
             // Setup event handlers for real-time notifications
             _hubConnection.On<int, string, string, int, DateTime>("EscalationNotification", OnEscalationNotification);
+            _hubConnection.On<int, string, string, int, DateTime>("TargetedEscalationNotification", OnTargetedEscalationNotification);
             _hubConnection.On<int, int, int, bool>("AgentWorkloadUpdated", OnAgentWorkloadUpdated);
             _hubConnection.On<int>("EscalationQueueUpdated", OnEscalationQueueUpdated);
             _hubConnection.On<int, string, bool, string>("AgentAvailabilityChanged", OnAgentAvailabilityChanged);
@@ -355,7 +379,6 @@
                 InvokeAsync(() =>
                 {
                     _connectionStatus = "Reconnecting...";
-                    _isConnected = false;
                     StateHasChanged();
                 });
                 return Task.CompletedTask;
@@ -366,7 +389,6 @@
                 InvokeAsync(async () =>
                 {
                     _connectionStatus = "Connected";
-                    _isConnected = true;
                     StateHasChanged();
                     
                     // Rejoin the agent group after reconnection
@@ -380,33 +402,36 @@
                 InvokeAsync(() =>
                 {
                     _connectionStatus = error == null ? "Disconnected" : $"Error: {error.Message}";
-                    _isConnected = false;
                     StateHasChanged();
                 });
                 return Task.CompletedTask;
             };
-            
-            // Start the connection
-            await _hubConnection.StartAsync();
-            
-            // Join the agent group to receive notifications
-            await _hubConnection.InvokeAsync("JoinAgentGroup");
-            
-            _isConnected = true;
-            _connectionStatus = "Connected";
-            
-            // Stop the timer-based refresh since we now have real-time updates
-            _refreshTimer?.Dispose();
-            _refreshTimer = null;
+
+            if (_hubConnection.State == HubConnectionState.Connected)
+            {
+                 // Join the agent group to receive notifications
+                await _hubConnection.InvokeAsync("JoinAgentGroup");
+                Console.WriteLine("SignalR: Joined agent group");
+                _connectionStatus = "Connected";
+                // Stop the timer-based refresh since we now have real-time updates
+                _refreshTimer?.Dispose();
+                _refreshTimer = null;
+            }
+            else
+            {
+                _connectionStatus = $"Failed: Connection state is {_hubConnection.State}";
+                StartPollingMode();
+            }
         }
         catch (Exception ex)
         {
-            _connectionStatus = $"Failed: {ex.Message}";
-            Snackbar.Add($"Failed to connect to real-time updates: {ex.Message}", Severity.Warning);
+            var errorMessage = ex.InnerException?.Message ?? ex.Message;
+            _connectionStatus = $"Failed: {errorMessage}";
+            Snackbar.Add($"Real-time updates unavailable: {errorMessage}. Using polling mode.", Severity.Info);
+            StartPollingMode();
         }
         finally
         {
-            _isConnecting = false;
             StateHasChanged();
         }
     }
@@ -647,6 +672,7 @@
             "Connected" => Icons.Material.Filled.CloudDone,
             "Connecting..." => Icons.Material.Filled.CloudSync,
             "Reconnecting..." => Icons.Material.Filled.CloudSync,
+            "Polling Mode" => Icons.Material.Filled.Refresh,
             _ => Icons.Material.Filled.CloudOff
         };
     }
@@ -658,6 +684,7 @@
             "Connected" => Color.Success,
             "Connecting..." => Color.Info,
             "Reconnecting..." => Color.Warning,
+            "Polling Mode" => Color.Warning,
             _ => Color.Error
         };
     }
@@ -691,6 +718,94 @@
             2 => Icons.Material.Filled.Warning, // High
             _ => Icons.Material.Filled.Info // Standard
         };
+    }
+
+    private async Task LoadNotificationPreferences()
+    {
+        try
+        {
+            var query = new GetAgentPreferencesQuery
+            {
+                ApplicationUserId = CurrentUser.Current?.UserId ?? ""
+            };
+            
+            var result = await Mediator.Send(query);
+            if (result.Succeeded)
+            {
+                _notificationPreferences = result.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load notification preferences: {ex.Message}");
+            // Use defaults if preferences loading fails
+            _notificationPreferences = new AgentNotificationPreferencesDto
+            {
+                ApplicationUserId = CurrentUser.Current?.UserId ?? "",
+                TenantId = CurrentUser.Current?.TenantId ?? ""
+            };
+        }
+    }
+
+    private async Task OnTargetedEscalationNotification(int conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt)
+    {
+        await InvokeAsync(async () =>
+        {
+            // This is a targeted notification based on user preferences
+            if (_notificationPreferences == null) return;
+            
+            // Check if user wants notifications for this priority level
+            bool shouldNotify = _notificationPreferences.ShouldNotifyForPriority(priority);
+            if (!shouldNotify) return;
+            
+            try
+            {
+                // Create preference object based on user settings
+                var preferences = new 
+                { 
+                    browserNotifications = _notificationPreferences.EnableBrowserNotifications, 
+                    audioNotifications = _notificationPreferences.EnableAudioAlerts, 
+                    audioVolume = _notificationPreferences.AudioVolume / 100.0 // Convert to 0-1 range
+                };
+                
+                await JS.InvokeVoidAsync("agentNotifications.showEscalationNotification", 
+                    customerPhoneNumber, reason, priority, preferences);
+                
+                // Also show in-app notification if browser doesn't have focus
+                var isVisible = await JS.InvokeAsync<bool>("document.hasFocus");
+                if (!isVisible)
+                {
+                    var severityLevel = priority > 2 ? Severity.Error : priority > 1 ? Severity.Warning : Severity.Info;
+                    Snackbar.Add($"Priority {priority} escalation from {customerPhoneNumber}: {reason}", severityLevel);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error showing targeted notification: {ex.Message}");
+            }
+        });
+    }
+
+    private void StartPollingMode()
+    {
+        _connectionStatus = "Polling Mode";
+        
+        // Start a timer to refresh data periodically as fallback
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshData();
+                    StateHasChanged();
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Polling refresh error: {ex.Message}");
+            }
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)); // Refresh every 30 seconds
     }
 
     public async ValueTask DisposeAsync()

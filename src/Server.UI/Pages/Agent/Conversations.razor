@@ -74,7 +74,7 @@
                 <RowTemplate>
                     <MudTd DataLabel="Conversation ID">
                         <MudText Typo="Typo.body2" Class="font-weight-medium">
-                            @context.ConversationId
+                            @context.ConversationReference
                         </MudText>
                     </MudTd>
                     <MudTd DataLabel="User">
@@ -131,7 +131,7 @@
                         <div class="d-flex gap-1">
                             <MudIconButton Icon="@Icons.Material.Filled.Visibility"
                                           Size="Size.Small"
-                                          OnClick="@(() => ViewConversation(context.ConversationId))"
+                                           OnClick="@(() => ViewConversation(context.ConversationReference))"
                                           Title="@L["View conversation"]" />
                             <MudIconButton Icon="@Icons.Material.Filled.Download"
                                           Size="Size.Small"

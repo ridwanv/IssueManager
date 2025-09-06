@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using MediatR;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.EscalateConversation;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent;
@@ -332,7 +332,7 @@ public class ConversationsController : ControllerBase
     /// <param name="request">Assignment request</param>
     /// <returns>Success result</returns>
     [HttpPost("{conversationId:int}/assign")]
-    public async Task<ActionResult<Result>> AssignAgent(int conversationId, [FromBody] AssignAgentRequest request)
+    public async Task<ActionResult<Result>> AssignAgent(string conversationId, [FromBody] AssignAgentRequest request)
     {
         try
         {
@@ -361,7 +361,7 @@ public class ConversationsController : ControllerBase
     /// <param name="request">Completion request</param>
     /// <returns>Success result</returns>
     [HttpPost("{conversationId:int}/complete")]
-    public async Task<ActionResult<Result>> CompleteConversation(int conversationId, [FromBody] CompleteConversationRequest request)
+    public async Task<ActionResult<Result>> CompleteConversation(string conversationId, [FromBody] CompleteConversationRequest request)
     {
         try
         {
@@ -438,6 +438,79 @@ public class ConversationsController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving messages for conversation {ConversationId}", conversationId);
             return StatusCode(500, "An error occurred while retrieving messages");
+        }
+    }
+
+    /// <summary>
+    /// Test endpoint to trigger escalation notification - FOR DEVELOPMENT ONLY
+    /// </summary>
+    [HttpPost("test-escalation")]
+    public async Task<ActionResult> TestEscalation()
+    {
+        try
+        {
+            var command = new EscalateConversationCommand(
+                ConversationId: $"test-{Guid.NewGuid()}",
+                Reason: "Test escalation for notification debugging",
+                ConversationTranscript: "This is a test escalation to verify notifications work",
+                WhatsAppPhoneNumber: "+27123456789"
+            );
+            
+            var result = await _mediator.Send(command);
+            
+            if (result.Succeeded)
+            {
+                return Ok(new { message = "Test escalation triggered successfully", conversationId = result.Data });
+            }
+            else
+            {
+                return BadRequest(new { error = result.ErrorMessage });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error triggering test escalation");
+            return StatusCode(500, "An error occurred while triggering test escalation");
+        }
+    }
+
+    /// <summary>
+    /// Test endpoint to save agent preferences - FOR DEVELOPMENT ONLY
+    /// </summary>
+    [HttpPost("test-preferences")]
+    public async Task<ActionResult> TestSavePreferences()
+    {
+        try
+        {
+            var command = new CleanArchitecture.Blazor.Application.Features.Agents.Commands.UpdatePreferences.UpdateAgentPreferencesCommand
+            {
+                ApplicationUserId = "test-user-id",
+                EnableBrowserNotifications = true,
+                EnableAudioAlerts = false,
+                EnableEmailNotifications = true,
+                NotifyOnStandardPriority = true,
+                NotifyOnHighPriority = true,
+                NotifyOnCriticalPriority = false,
+                NotifyDuringBreak = false,
+                NotifyWhenOffline = false,
+                AudioVolume = 75
+            };
+            
+            var result = await _mediator.Send(command);
+            
+            if (result.Succeeded)
+            {
+                return Ok(new { message = "Test preferences saved successfully", data = result.Data });
+            }
+            else
+            {
+                return BadRequest(new { error = result.ErrorMessage });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving test preferences");
+            return StatusCode(500, $"An error occurred while saving test preferences: {ex.Message}");
         }
     }
 }

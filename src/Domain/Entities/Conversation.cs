@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Domain.Common.Entities;
@@ -8,7 +8,7 @@ namespace CleanArchitecture.Blazor.Domain.Entities;
 
 public class Conversation : BaseAuditableEntity, IMustHaveTenant
 {
-    public string ConversationId { get; set; } = default!; // Bot Framework conversation ID
+    public string ConversationReference { get; set; } = default!; // Bot Framework conversation ID
     public string? UserId { get; set; } // Bot Framework user ID
     public string? UserName { get; set; } // Bot Framework user name
     public string? WhatsAppPhoneNumber { get; set; }

@@ -12,6 +12,7 @@ using CleanArchitecture.Blazor.Server.UI.Services.Layout;
 using CleanArchitecture.Blazor.Server.UI.Services.Navigation;
 using CleanArchitecture.Blazor.Server.UI.Services.Notifications;
 using CleanArchitecture.Blazor.Server.UI.Services.UserPreferences;
+using IssueManager.Server.UI.Services;
 using Hangfire;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Localization;
@@ -20,6 +21,7 @@ using Microsoft.Extensions.FileProviders;
 using MudBlazor.Services;
 using QuestPDF;
 using QuestPDF.Infrastructure;
+using CleanArchitecture.Blazor.Server.UI.Services.SignalR;
 
 
 
@@ -169,8 +171,9 @@ public static class DependencyInjection
             c.DefaultRequestHeaders.Add("x-goog-api-key", aiSettings.GeminiApiKey);
            
         });
-        services.AddScoped<LocalTimeOffset>();
+        services.AddHttpContextAccessor();
         services.AddScoped<HubClient>();
+        services.AddScoped<SignalRConnectionService>();
         services
             .AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>()
             .AddScoped<LayoutService>()
@@ -182,6 +185,7 @@ public static class DependencyInjection
             .AddScoped<IUserPreferencesService, UserPreferencesService>()
             .AddScoped<IMenuService, MenuService>()
             .AddScoped<InMemoryNotificationService>()
+            .AddScoped<EscalationNavigationService>()
             .AddScoped<INotificationService>(sp =>
             {
                 var service = sp.GetRequiredService<InMemoryNotificationService>();
@@ -284,6 +288,14 @@ public static class DependencyInjection
         app.UseRequestLocalization(localizationOptions);
         app.UseMiddleware<LocalizationCookiesMiddleware>();
         app.UseExceptionHandler();
+        
+        // Enhanced WebSocket configuration for better SignalR reliability - MUST come before SignalR mapping
+        app.UseWebSockets(new WebSocketOptions()
+        {
+            KeepAliveInterval = TimeSpan.FromSeconds(15),
+            AllowedOrigins = { "*" } // Allow all origins in development
+        });
+        
         app.UseHangfireDashboard("/jobs", new DashboardOptions
         {
             Authorization = new[] { new HangfireDashboardAuthorizationFilter() },
@@ -292,7 +304,12 @@ public static class DependencyInjection
         app.MapRazorComponents<App>()
             .AddInteractiveServerRenderMode()
             .AllowAnonymous(); // Allow anonymous access to prevent auth issues
-        app.MapHub<ServerHub>(ISignalRHub.Url);
+        app.MapHub<ServerHub>(ISignalRHub.Url, options =>
+        {
+            options.Transports =
+                Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets |
+                Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
+        });
         
         // Map API controllers
         app.MapControllers();
@@ -303,12 +320,6 @@ public static class DependencyInjection
         // Add additional endpoints required by the Identity /Account Razor components.
         app.MapAdditionalIdentityEndpoints();
         app.UseForwardedHeaders();
-        // Enhanced WebSocket configuration for better SignalR reliability
-        app.UseWebSockets(new WebSocketOptions()
-        {
-            KeepAliveInterval = TimeSpan.FromSeconds(15),
-            AllowedOrigins = { "*" } // Allow all origins in development
-        });
         
         // Add connection debugging middleware in development
         if (app.Environment.IsDevelopment())

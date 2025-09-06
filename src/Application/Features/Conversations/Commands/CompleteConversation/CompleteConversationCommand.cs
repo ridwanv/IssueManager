@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
@@ -7,7 +7,7 @@ using CleanArchitecture.Blazor.Domain.Enums;
 namespace CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation;
 
 public record CompleteConversationCommand(
-    int ConversationId,
+    string ConversationId,
     string? Summary = null
 ) : ICacheInvalidatorRequest<Result<bool>>
 {
@@ -35,7 +35,7 @@ public class CompleteConversationCommandHandler : IRequestHandler<CompleteConver
         
         // Get conversation
         var conversation = await db.Conversations
-            .FirstOrDefaultAsync(c => c.Id == request.ConversationId, cancellationToken);
+            .FirstOrDefaultAsync(c => c.ConversationReference == request.ConversationId, cancellationToken);
             
         if (conversation == null)
         {
@@ -72,7 +72,7 @@ public class CompleteConversationCommandHandler : IRequestHandler<CompleteConver
         
         // Complete handoff
         var activeHandoff = await db.ConversationHandoffs
-            .Where(h => h.ConversationId == request.ConversationId && h.Status == HandoffStatus.Accepted)
+            .Where(h => h.ConversationReference == request.ConversationId && h.Status == HandoffStatus.Accepted)
             .OrderByDescending(h => h.AcceptedAt)
             .FirstOrDefaultAsync(cancellationToken);
             

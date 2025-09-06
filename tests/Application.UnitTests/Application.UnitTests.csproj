@@ -2,12 +2,13 @@
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
-        <RootNamespace>CleanArchitecture.Blazor.Application.UnitTests</RootNamespace>
-        <AssemblyName>CleanArchitecture.Blazor.Application.UnitTests</AssemblyName>
+        <RootNamespace>IssueManager.Application.UnitTests</RootNamespace>
+        <AssemblyName>IssueManager.Application.UnitTests</AssemblyName>
 
         <IsPackable>false</IsPackable>
 
         <LangVersion>default</LangVersion>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>

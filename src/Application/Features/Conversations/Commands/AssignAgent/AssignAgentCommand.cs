@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
@@ -7,7 +7,7 @@ using CleanArchitecture.Blazor.Domain.Enums;
 namespace CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent;
 
 public record AssignAgentCommand(
-    int ConversationId,
+    string ConversationId,
     string AgentId
 ) : ICacheInvalidatorRequest<Result<bool>>
 {
@@ -35,7 +35,7 @@ public class AssignAgentCommandHandler : IRequestHandler<AssignAgentCommand, Res
         
         // Get conversation
         var conversation = await db.Conversations
-            .FirstOrDefaultAsync(c => c.Id == request.ConversationId, cancellationToken);
+            .FirstOrDefaultAsync(c => c.ConversationReference == request.ConversationId, cancellationToken);
             
         if (conversation == null)
         {
@@ -67,7 +67,7 @@ public class AssignAgentCommandHandler : IRequestHandler<AssignAgentCommand, Res
         
         // Update handoff status
         var pendingHandoff = await db.ConversationHandoffs
-            .Where(h => h.ConversationId == request.ConversationId && h.Status == HandoffStatus.Initiated)
+            .Where(h => h.ConversationReference == request.ConversationId && h.Status == HandoffStatus.Initiated)
             .OrderByDescending(h => h.InitiatedAt)
             .FirstOrDefaultAsync(cancellationToken);
             

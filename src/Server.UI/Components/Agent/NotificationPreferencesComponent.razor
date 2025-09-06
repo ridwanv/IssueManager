@@ -1,0 +1,288 @@
+@using CleanArchitecture.Blazor.Application.Features.Agents.Commands.UpdatePreferences
+@using CleanArchitecture.Blazor.Application.Features.Agents.Queries.GetPreferences
+@using CleanArchitecture.Blazor.Application.Features.Agents.DTOs
+@using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IUserContextAccessor CurrentUser
+
+<MudCard Elevation="2" Style="margin-bottom: 16px;">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">
+                <MudIcon Icon="@Icons.Material.Filled.Notifications" Class="mr-2"/>
+                Notification Preferences
+            </MudText>
+        </CardHeaderContent>
+        <CardHeaderActions>
+            <MudIconButton Icon="@(_isExpanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                          OnClick="ToggleExpansion" />
+        </CardHeaderActions>
+    </MudCardHeader>
+    
+    <MudCollapse Expanded="_isExpanded">
+        <MudCardContent>
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" />
+            }
+            else if (_preferences != null)
+            {
+                <MudGrid>
+                    <!-- Browser & Audio Notifications -->
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Alert Types</MudText>
+                        
+                        <MudSwitch T="bool" Checked="_preferences.EnableBrowserNotifications"
+                                  CheckedChanged="OnBrowserNotificationsChanged"
+                                  Label="Browser Notifications"
+                                  Color="Color.Primary"
+                                  Class="mb-2" />
+                        
+                        <MudSwitch T="bool" @bind-Checked="_preferences.EnableAudioAlerts"
+                                  Label="Audio Alerts"
+                                  Color="Color.Primary"
+                                  Class="mb-2" />
+                        
+                        <MudSwitch T="bool" @bind-Checked="_preferences.EnableEmailNotifications"
+                                  Label="Email Notifications"
+                                  Color="Color.Primary"
+                                  Class="mb-3" />
+                        
+                        @if (_preferences.EnableAudioAlerts)
+                        {
+                            <MudText Typo="Typo.body2" Class="mb-2">Audio Volume: @(_preferences.AudioVolume)%</MudText>
+                            <MudSlider @bind-Value="_preferences.AudioVolume"
+                                      Min="0" Max="100" Step="5"
+                                      Color="Color.Primary"
+                                      Class="mb-3" />
+                        }
+                    </MudItem>
+                    
+                    <!-- Priority Settings -->
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Priority Filters</MudText>
+                        
+                        <MudSwitch T="bool" @bind-Checked="_preferences.NotifyOnStandardPriority"
+                                  Label="Standard Priority (1)"
+                                  Color="Color.Success"
+                                  Class="mb-2" />
+                        
+                        <MudSwitch T="bool" @bind-Checked="_preferences.NotifyOnHighPriority"
+                                  Label="High Priority (2)"
+                                  Color="Color.Warning"
+                                  Class="mb-2" />
+                        
+                        <MudSwitch T="bool" @bind-Checked="_preferences.NotifyOnCriticalPriority"
+                                  Label="Critical Priority (3)"
+                                  Color="Color.Error"
+                                  Class="mb-3" />
+                    </MudItem>
+                    
+                    <!-- Status-based Settings -->
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Status Settings</MudText>
+                        
+                        <MudSwitch T="bool" @bind-Checked="_preferences.NotifyDuringBreak"
+                                  Label="Receive notifications during breaks"
+                                  Color="Color.Secondary"
+                                  Class="mb-2" />
+                        
+                        <MudSwitch T="bool" @bind-Checked="_preferences.NotifyWhenOffline"
+                                  Label="Receive notifications when offline"
+                                  Color="Color.Secondary"
+                                  Class="mb-3" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudCardContent>
+        
+        <MudCardActions>
+            <MudButton Variant="Variant.Filled"
+                      Color="Color.Primary"
+                      StartIcon="@Icons.Material.Filled.Save"
+                      OnClick="SavePreferences"
+                      Disabled="_loading">
+                Save Preferences
+            </MudButton>
+            <MudButton Variant="Variant.Text"
+                      OnClick="ResetToDefaults"
+                      Disabled="_loading">
+                Reset to Defaults
+            </MudButton>
+        </MudCardActions>
+    </MudCollapse>
+</MudCard>
+
+@code {
+    private bool _isExpanded = false;
+    private bool _loading = true;
+    private AgentNotificationPreferencesDto? _preferences = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPreferences();
+    }
+
+    private async Task LoadPreferences()
+    {
+        _loading = true;
+        try
+        {
+            var userId = CurrentUser.Current?.UserId;
+            var tenantId = CurrentUser.Current?.TenantId;
+            
+            Console.WriteLine($"Loading preferences for user: {userId}, tenant: {tenantId}");
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                Console.WriteLine("No user ID available for loading preferences");
+                _preferences = new AgentNotificationPreferencesDto
+                {
+                    ApplicationUserId = "",
+                    TenantId = tenantId ?? ""
+                };
+                return;
+            }
+            
+            var query = new GetAgentPreferencesQuery
+            {
+                ApplicationUserId = userId
+            };
+            
+            var result = await Mediator.Send(query);
+            if (result.Succeeded)
+            {
+                _preferences = result.Data ?? new AgentNotificationPreferencesDto
+                {
+                    ApplicationUserId = userId,
+                    TenantId = tenantId ?? ""
+                };
+                Console.WriteLine($"Preferences loaded: Browser={_preferences.EnableBrowserNotifications}, Audio={_preferences.EnableAudioAlerts}");
+            }
+            else
+            {
+                Console.WriteLine($"Failed to load preferences: {result.ErrorMessage}");
+                Snackbar.Add($"Failed to load preferences: {result.ErrorMessage}", Severity.Error);
+                
+                // Create default preferences
+                _preferences = new AgentNotificationPreferencesDto
+                {
+                    ApplicationUserId = userId,
+                    TenantId = tenantId ?? ""
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception loading preferences: {ex}");
+            Snackbar.Add($"Error loading preferences: {ex.Message}", Severity.Error);
+            
+            // Create default preferences
+            _preferences = new AgentNotificationPreferencesDto
+            {
+                ApplicationUserId = CurrentUser.Current?.UserId ?? "",
+                TenantId = CurrentUser.Current?.TenantId ?? ""
+            };
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SavePreferences()
+    {
+        if (_preferences == null) 
+        {
+            Snackbar.Add("No preferences to save", Severity.Warning);
+            return;
+        }
+        
+        _loading = true;
+        try
+        {
+            var userId = CurrentUser.Current?.UserId;
+            if (string.IsNullOrEmpty(userId))
+            {
+                Snackbar.Add("User not authenticated - cannot save preferences", Severity.Error);
+                return;
+            }
+            
+            Console.WriteLine($"Saving preferences for user: {userId}");
+            
+            var command = new UpdateAgentPreferencesCommand
+            {
+                ApplicationUserId = userId,
+                EnableBrowserNotifications = _preferences.EnableBrowserNotifications,
+                EnableAudioAlerts = _preferences.EnableAudioAlerts,
+                EnableEmailNotifications = _preferences.EnableEmailNotifications,
+                NotifyOnStandardPriority = _preferences.NotifyOnStandardPriority,
+                NotifyOnHighPriority = _preferences.NotifyOnHighPriority,
+                NotifyOnCriticalPriority = _preferences.NotifyOnCriticalPriority,
+                NotifyDuringBreak = _preferences.NotifyDuringBreak,
+                NotifyWhenOffline = _preferences.NotifyWhenOffline,
+                AudioVolume = _preferences.AudioVolume,
+                CustomSoundUrl = _preferences.CustomSoundUrl
+            };
+            
+            Console.WriteLine($"Sending command with preferences: Browser={command.EnableBrowserNotifications}, Audio={command.EnableAudioAlerts}");
+            
+            var result = await Mediator.Send(command);
+            if (result.Succeeded)
+            {
+                Snackbar.Add("Notification preferences saved successfully", Severity.Success);
+                _preferences = result.Data;
+                Console.WriteLine("Preferences saved successfully");
+            }
+            else
+            {
+                Console.WriteLine($"Save failed: {result.ErrorMessage}");
+                Snackbar.Add($"Failed to save preferences: {result.ErrorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception saving preferences: {ex}");
+            Snackbar.Add($"Error saving preferences: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ResetToDefaults()
+    {
+        _preferences = new AgentNotificationPreferencesDto
+        {
+            ApplicationUserId = CurrentUser.Current?.UserId ?? "",
+            TenantId = CurrentUser.Current?.TenantId ?? "",
+            EnableBrowserNotifications = true,
+            EnableAudioAlerts = true,
+            EnableEmailNotifications = false,
+            NotifyOnStandardPriority = true,
+            NotifyOnHighPriority = true,
+            NotifyOnCriticalPriority = true,
+            NotifyDuringBreak = false,
+            NotifyWhenOffline = false,
+            AudioVolume = 50
+        };
+        
+        Snackbar.Add("Preferences reset to defaults. Remember to save!", Severity.Info);
+    }
+
+    private void OnBrowserNotificationsChanged(bool value)
+    {
+        Console.WriteLine($"Browser notifications changed to: {value}");
+        _preferences.EnableBrowserNotifications = value;
+        StateHasChanged();
+    }
+    
+    private void ToggleExpansion()
+    {
+        _isExpanded = !_isExpanded;
+    }
+}

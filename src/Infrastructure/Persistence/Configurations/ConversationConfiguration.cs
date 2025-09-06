@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Domain.Entities;
@@ -11,7 +11,7 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
 {
     public void Configure(EntityTypeBuilder<Conversation> builder)
     {
-        builder.Property(x => x.ConversationId)
+        builder.Property(x => x.ConversationReference)
             .HasMaxLength(100)
             .IsRequired();
 
@@ -41,7 +41,7 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
             .IsRequired();
 
         // Indexes for better query performance
-        builder.HasIndex(x => x.ConversationId)
+        builder.HasIndex(x => x.ConversationReference)
             .IsUnique();
 
         builder.HasIndex(x => x.Status);

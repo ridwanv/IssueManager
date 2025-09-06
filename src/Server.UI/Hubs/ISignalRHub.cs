@@ -33,15 +33,21 @@ public interface ISignalRHub
     Task IssueListUpdated();
     
     // Agent escalation methods
-    Task ConversationEscalated(int conversationId, string reason, string customerPhoneNumber);
-    Task ConversationAssigned(int conversationId, string agentId, string agentName);
-    Task ConversationCompleted(int conversationId, string agentId);
+    Task ConversationEscalated(string conversationId, string reason, string customerPhoneNumber);
+    Task ConversationAssigned(string conversationId, string agentId, string agentName);
+    Task ConversationCompleted(string conversationId, string agentId);
     Task AgentStatusChanged(string agentId, string status);
-    Task NewConversationMessage(int conversationId, string from, string message, bool isFromAgent);
+    Task NewConversationMessage(string conversationId, string from, string message, bool isFromAgent);
     
     // Enhanced agent notification methods
-    Task EscalationNotification(int conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt);
+    Task EscalationNotification(string conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt);
+    Task TargetedEscalationNotification(string conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt);
     Task AgentWorkloadUpdated(int agentId, int activeCount, int maxCount, bool isAvailable);
     Task EscalationQueueUpdated(int queueCount);
     Task AgentAvailabilityChanged(int agentId, string status, bool isAvailable, string agentName);
+    
+    // Multi-agent popup methods
+    Task ReceiveEscalationPopup(object escalationPopupDto);
+    Task DismissEscalationPopup(string conversationId);
+    Task NotifyEscalationAccepted(string conversationId);
 }
