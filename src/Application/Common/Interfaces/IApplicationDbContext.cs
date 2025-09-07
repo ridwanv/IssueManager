@@ -32,6 +32,7 @@ public interface IApplicationDbContext: IAsyncDisposable
     DbSet<Conversation> Conversations { get; set; }
     DbSet<ConversationMessage> ConversationMessages { get; set; }
     DbSet<ConversationAttachment> ConversationAttachments { get; set; }
+    DbSet<ConversationInsight> ConversationInsights { get; set; }
     DbSet<Agent> Agents { get; set; }
     DbSet<AgentNotificationPreferences> AgentNotificationPreferences { get; set; }
     DbSet<ConversationParticipant> ConversationParticipants { get; set; }

@@ -1,0 +1,156 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationInsights
+@using CleanArchitecture.Blazor.Domain.Enums
+
+<MudCard Class="mt-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Medium" Color="Color.Primary" />
+                <MudText Typo="Typo.h6">@L["AI Insights"]</MudText>
+                @if (_loading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                }
+            </div>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (_loading)
+        {
+            <div class="d-flex justify-center py-4">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Analyzing conversation..."]</MudText>
+            </div>
+        }
+        else if (_insights == null)
+        {
+            <div class="d-flex flex-column align-center gap-2 py-4">
+                <MudIcon Icon="@Icons.Material.Outlined.Analytics" Style="font-size: 2rem; opacity: 0.5;" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                    @L["No insights available yet"]
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center">
+                    @L["Insights are generated automatically after conversation completion"]
+                </MudText>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-4">
+                <!-- Sentiment Analysis -->
+                <div>
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Sentiment"]</MudText>
+                        <MudChip T="string" 
+                                Size="Size.Small" 
+                                Color="@GetSentimentColor(_insights.SentimentLabel)"
+                                Variant="Variant.Filled"
+                                Icon="@GetSentimentIcon(_insights.SentimentLabel)">
+                            @_insights.SentimentLabel
+                        </MudChip>
+                    </div>
+                    
+                    <!-- Sentiment Score Bar -->
+                    <div class="d-flex align-center gap-2 mb-1">
+                        <MudText Typo="Typo.caption">-1.0</MudText>
+                        <MudProgressLinear 
+                            Color="@GetSentimentColor(_insights.SentimentLabel)" 
+                            Value="@GetSentimentProgressValue(_insights.SentimentScore)"
+                            Class="flex-grow-1" />
+                        <MudText Typo="Typo.caption">+1.0</MudText>
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @L["Score"]: @_insights.SentimentScore.ToString("F2")
+                    </MudText>
+                </div>
+
+                <!-- Resolution Success -->
+                @if (_insights.ResolutionSuccess.HasValue)
+                {
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">@L["Resolution"]</MudText>
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@(_insights.ResolutionSuccess.Value ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" 
+                                    Color="@(_insights.ResolutionSuccess.Value ? Color.Success : Color.Error)" />
+                            <MudText Typo="Typo.body2">
+                                @(_insights.ResolutionSuccess.Value ? L["Successfully resolved"] : L["Not resolved"])
+                            </MudText>
+                        </div>
+                    </div>
+                }
+
+                <!-- Key Themes -->
+                @if (_insights.KeyThemes.Any())
+                {
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">@L["Key Themes"]</MudText>
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var theme in _insights.KeyThemes.Take(5))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+                                    @theme
+                                </MudChip>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Customer Satisfaction -->
+                @if (_insights.CustomerSatisfactionIndicators.Any())
+                {
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">@L["Satisfaction Indicators"]</MudText>
+                        <div class="d-flex flex-column gap-1">
+                            @foreach (var indicator in _insights.CustomerSatisfactionIndicators.Take(3))
+                            {
+                                <div class="d-flex align-center gap-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" Color="Color.Success" />
+                                    <MudText Typo="Typo.caption">@indicator</MudText>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Recommendations -->
+                @if (_insights.Recommendations.Any())
+                {
+                    <MudExpansionPanels MultiExpansion="false" Elevation="0">
+                        <MudExpansionPanel Text="@($"{L["Recommendations"]} ({_insights.Recommendations.Count})")" 
+                                          Icon="@Icons.Material.Filled.Lightbulb">
+                            <div class="d-flex flex-column gap-2">
+                                @foreach (var recommendation in _insights.Recommendations)
+                                {
+                                    <div class="d-flex align-start gap-2">
+                                        <MudIcon Icon="@Icons.Material.Filled.ArrowRight" Size="Size.Small" Color="Color.Warning" />
+                                        <MudText Typo="Typo.body2" Class="flex-grow-1">@recommendation</MudText>
+                                    </div>
+                                }
+                            </div>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+
+                <!-- Processing Info -->
+                <MudDivider />
+                <div class="d-flex justify-space-between align-center">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @L["Processed with"] @_insights.ProcessingModel
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @_insights.ProcessingDurationFormatted
+                    </MudText>
+                </div>
+                
+                @if (_insights.Warnings.Any())
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Class="pa-2">
+                        <MudText Typo="Typo.caption">
+                            @string.Join("; ", _insights.Warnings)
+                        </MudText>
+                    </MudAlert>
+                }
+            </div>
+        }
+    </MudCardContent>
+</MudCard>

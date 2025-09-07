@@ -292,6 +292,55 @@ public class ServerHub : Hub<ISignalRHub>
         await BroadcastConversationAssigned(conversationId, userId, userName);
     }
 
+    // Issue-Conversation Integration Methods
+    public async Task JoinIssueConversationGroup(Guid issueId, string conversationId)
+    {
+        var groupName = $"Issue-{issueId}-Conversation-{conversationId}";
+        await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
+        
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userName = Context.User?.Identity?.Name ?? "Agent";
+        
+        if (!string.IsNullOrEmpty(userId))
+        {
+            // Track agent group membership
+            AgentGroups.AddOrUpdate(userId, 
+                new HashSet<string> { groupName },
+                (key, existing) => { existing.Add(groupName); return existing; });
+            
+            // Notify group about agent joining
+            await Clients.Group(groupName).AgentJoinedIssueConversation(issueId, userId, userName);
+        }
+    }
+
+    public async Task LeaveIssueConversationGroup(Guid issueId, string conversationId)
+    {
+        var groupName = $"Issue-{issueId}-Conversation-{conversationId}";
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
+        
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userName = Context.User?.Identity?.Name ?? "Agent";
+        
+        if (!string.IsNullOrEmpty(userId))
+        {
+            // Update agent group membership
+            if (AgentGroups.TryGetValue(userId, out var groups))
+            {
+                groups.Remove(groupName);
+            }
+            
+            // Notify group about agent leaving
+            await Clients.Group(groupName).AgentLeftIssueConversation(issueId, userId, userName);
+        }
+    }
+
+
+    public async Task BroadcastIssueConversationMessageReceived(Guid issueId, string conversationId, object message)
+    {
+        var groupName = $"Issue-{issueId}-Conversation-{conversationId}";
+        await Clients.Group(groupName).IssueConversationMessageReceived(issueId, message);
+    }
+
     public async Task SendConversationMessage(string conversationId, string message)
     {
         var userName = Context.User?.Identity?.Name ?? "Agent";

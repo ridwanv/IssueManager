@@ -45,6 +45,9 @@ public class IssueDto
     [Description("Reporter Contact Id")]
     public int? ReporterContactId { get; set; }
     
+    [Description("Conversation Id")]
+    public int? ConversationId { get; set; }
+    
     [Description("Reporter Name")]
     public string? ReporterName { get; set; }
     
@@ -112,6 +115,7 @@ public class IssueDto
                     
             CreateMap<IssueDto, Issue>(MemberList.None)
                 .ForMember(dest => dest.ReporterContact, opt => opt.Ignore())
+                .ForMember(dest => dest.Conversation, opt => opt.Ignore())
                 .ForMember(dest => dest.DuplicateOf, opt => opt.Ignore())
                 .ForMember(dest => dest.Attachments, opt => opt.Ignore())
                 .ForMember(dest => dest.EventLogs, opt => opt.Ignore());

@@ -26,6 +26,9 @@ public class CreateIssueCommand
     [Description("Reporter Contact Id")]
     public int? ReporterContactId { get; set; }
     
+    [Description("Conversation Id")]
+    public int? ConversationId { get; set; }
+    
     [Description("Channel")]
     public string? Channel { get; set; }
     
@@ -121,6 +124,7 @@ public class IssueDto
     public IssuePriority Priority { get; set; }
     public IssueStatus Status { get; set; }
     public int? ReporterContactId { get; set; }
+    public int? ConversationId { get; set; }
     public string? ReporterName { get; set; }
     public string? ReporterPhone { get; set; }
     public string? Channel { get; set; }

@@ -20,6 +20,7 @@ public record IssueIntakeCommand : ICacheInvalidatorRequest<Result<Guid>>
     public bool ConsentFlag { get; set; } = true;
     public string Status { get; set; } = "New";
     public Guid? ContactId { get; set; }
+    public int? ConversationId { get; set; }
     public List<IssueAttachmentData>? Attachments { get; set; }
 
     public string CacheKey => IssueCacheKey.GetAllCacheKey;

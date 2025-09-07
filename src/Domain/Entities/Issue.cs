@@ -23,6 +23,10 @@ namespace CleanArchitecture.Blazor.Domain.Entities
         public int? ReporterContactId { get; set; }
         public Contact? ReporterContact { get; set; }
         
+        // Conversation link
+        public int? ConversationId { get; set; }
+        public Conversation? Conversation { get; set; }
+        
         // Assignment information
         public string? AssignedUserId { get; set; }
         
@@ -70,7 +74,8 @@ namespace CleanArchitecture.Blazor.Domain.Entities
             string tenantId,
             string? sourceMessageIds = null,
             string? whatsAppMetadata = null,
-            bool consentFlag = true)
+            bool consentFlag = true,
+            int? conversationId = null)
         {
             var issue = new Issue
             {
@@ -82,6 +87,7 @@ namespace CleanArchitecture.Blazor.Domain.Entities
                 Priority = priority,
                 Status = IssueStatus.New,
                 ReporterContactId = reporterContactId,
+                ConversationId = conversationId,
                 SourceMessageIds = sourceMessageIds ?? "[]",
                 WhatsAppMetadata = whatsAppMetadata,
                 ConsentFlag = consentFlag,

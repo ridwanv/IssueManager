@@ -16,6 +16,7 @@ using CleanArchitecture.Blazor.Infrastructure.Services.Gemini;
 using CleanArchitecture.Blazor.Infrastructure.Services.MultiTenant;
 using CleanArchitecture.Blazor.Infrastructure.Services.Jira;
 using CleanArchitecture.Blazor.Infrastructure.Services.Jira.Models;
+using CleanArchitecture.Blazor.Infrastructure.BackgroundJobs;
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -182,6 +183,12 @@ public static class DependencyInjection
         
         // Configure IssueSimilarityService for OpenAI-powered issue comparison
         services.AddScoped<IIssueSimilarityService, IssueSimilarityService>();
+        
+        // Configure ConversationAnalysisService for AI-powered conversation insights
+        services.AddScoped<IConversationAnalysisService, ConversationAnalysisService>();
+        
+        // Configure Background Jobs
+        services.AddScoped<ProcessCompletedConversationsJob>();
 
         // Configure JIRA Integration Services
         services.Configure<JiraConfiguration>(configuration.GetSection(JiraConfiguration.SectionName));

@@ -82,6 +82,11 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
             .WithMany()
             .HasForeignKey(e => e.DuplicateOfId)
             .OnDelete(DeleteBehavior.SetNull);
+            
+        builder.HasOne(e => e.Conversation)
+            .WithMany()
+            .HasForeignKey(e => e.ConversationId)
+            .OnDelete(DeleteBehavior.SetNull);
         
         // Configure collections
         builder.HasMany(e => e.Attachments)

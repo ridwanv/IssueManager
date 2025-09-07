@@ -582,6 +582,86 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.ToTable("ConversationHandoffs");
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationInsight", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CustomerSatisfactionIndicators")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeyThemes")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<TimeSpan>("ProcessingDuration")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProcessingModel")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Recommendations")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("ResolutionSuccess")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SentimentLabel")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("SentimentScore")
+                        .HasPrecision(3, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId")
+                        .IsUnique();
+
+                    b.HasIndex("ProcessedAt");
+
+                    b.HasIndex("SentimentScore");
+
+                    b.HasIndex("TenantId", "ProcessedAt");
+
+                    b.ToTable("ConversationInsights");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationMessage", b =>
                 {
                     b.Property<int>("Id")
@@ -947,6 +1027,9 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.Property<bool>("ConsentFlag")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ConversationId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("Created")
                         .HasColumnType("TEXT");
 
@@ -1036,6 +1119,8 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
 
                     b.HasIndex("DuplicateOfId");
 
@@ -1802,6 +1887,17 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.Navigation("Conversation");
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationInsight", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
+                        .WithOne()
+                        .HasForeignKey("CleanArchitecture.Blazor.Domain.Entities.ConversationInsight", "ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationMessage", b =>
                 {
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
@@ -1871,6 +1967,11 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Issue", b =>
                 {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "DuplicateOf")
                         .WithMany()
                         .HasForeignKey("DuplicateOfId")
@@ -1880,6 +1981,8 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .WithMany()
                         .HasForeignKey("ReporterContactId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Conversation");
 
                     b.Navigation("DuplicateOf");
 

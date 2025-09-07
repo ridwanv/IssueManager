@@ -67,7 +67,8 @@ public class IssueIntakeCommandHandler : IRequestHandler<IssueIntakeCommand, Res
                 tenantId: contact.TenantId,
                 sourceMessageIds: request.SourceMessageIds,
                 whatsAppMetadata: whatsAppMetadata,
-                consentFlag: request.ConsentFlag
+                consentFlag: request.ConsentFlag,
+                conversationId: request.ConversationId
             );
             
             // Set legacy fields for backward compatibility

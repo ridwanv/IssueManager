@@ -42,7 +42,7 @@ public class IssueManagerApiClient
             });
 
             var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync("/api/issues", content);
+            var response = await _httpClient.PostAsync("/api/issues/intake", content);
 
             var responseContent = await response.Content.ReadAsStringAsync();
 

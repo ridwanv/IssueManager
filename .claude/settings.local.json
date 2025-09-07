@@ -27,7 +27,9 @@
       "WebFetch(domain:learn.microsoft.com)",
       "Bash(dotnet clean:*)",
       "Bash(rm:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(cat:*)",
+      "Bash(rg:*)"
     ],
     "deny": [],
     "ask": [],

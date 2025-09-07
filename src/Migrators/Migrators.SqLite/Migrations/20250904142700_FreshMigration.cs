@@ -18,7 +18,7 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                 maxLength: 450,
                 nullable: true,
                 oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
+                oldType: "TEXT",
                 oldMaxLength: 450,
                 oldNullable: true);
 
@@ -29,7 +29,7 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                 maxLength: 450,
                 nullable: true,
                 oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
+                oldType: "TEXT",
                 oldMaxLength: 450,
                 oldNullable: true);
 
@@ -126,7 +126,7 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "WhatsAppMetadata",
                 table: "Issues",
-                type: "nvarchar(max)",
+                type: "TEXT",
                 maxLength: 450,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -137,7 +137,7 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "SourceMessageIds",
                 table: "Issues",
-                type: "nvarchar(max)",
+                type: "TEXT",
                 maxLength: 450,
                 nullable: true,
                 oldClrType: typeof(string),

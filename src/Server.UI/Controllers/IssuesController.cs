@@ -140,6 +140,35 @@ public class IssuesController : ControllerBase
     }
 
     /// <summary>
+    /// Create a new issue via WhatsApp/Bot intake
+    /// </summary>
+    /// <param name="command">Issue intake command</param>
+    /// <returns>Created issue ID</returns>
+    [HttpPost("intake")]
+    public async Task<ActionResult<Result<Guid>>> CreateIssueIntake([FromBody] IssueIntakeCommand command)
+    {
+        try
+        {
+            var result = await _mediator.Send(command);
+            
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            
+            return CreatedAtAction(
+                nameof(GetIssue), 
+                new { id = result.Data }, 
+                result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating issue via intake");
+            return StatusCode(500, "An error occurred while creating the issue");
+        }
+    }
+
+    /// <summary>
     /// Create a new issue
     /// </summary>
     /// <param name="command">Create issue command</param>

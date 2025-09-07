@@ -58,4 +58,9 @@ public interface ISignalRHub
     Task AgentJoinedConversation(string conversationId, string agentId, string agentName);
     Task AgentLeftConversation(string conversationId, string agentId);
     Task ConversationViewersUpdated(string conversationId, object viewers);
+    
+    // Issue-Conversation Integration methods
+    Task AgentJoinedIssueConversation(Guid issueId, string agentId, string agentName);
+    Task AgentLeftIssueConversation(Guid issueId, string agentId, string agentName);
+    Task IssueConversationMessageReceived(Guid issueId, object message);
 }

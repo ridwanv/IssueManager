@@ -97,6 +97,7 @@ public class IssueIntakePlugin
                 Priority = parsedPriority,
                 Status = IssueStatus.New,
                 ReporterContactId = null, // Will be resolved by the API based on phone number
+                ConversationId = _conversationData.ConversationEntityId, // Link to conversation
                 Channel = "WhatsApp",
                 Product = product!,
                 Severity = severity!,

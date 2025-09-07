@@ -29,28 +29,37 @@
     }
     else
     {
-        <MudGrid>
-            <!-- Main Issue Information -->
-            <MudItem xs="12" lg="8">
-                <MudPaper Class="pa-4 mb-4">
-                    <div class="d-flex align-center justify-space-between mb-3">
-                        <div>
-                            <MudText Typo="Typo.h4" Class="mb-2">@_issue.Title</MudText>
-                            <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
-                                @L["Reference"] #@_issue.ReferenceNumber
-                            </MudText>
-                        </div>
-                        <div class="d-flex align-center gap-2">
-                            <MudButton Variant="Variant.Text" 
-                                       Size="Size.Small" 
-                                       StartIcon="Icons.Material.Filled.ArrowBack"
-                                       Href="/issues">
-                                @L["Back to Issues"]
-                            </MudButton>
-                        </div>
-                    </div>
-                    
-                    <MudDivider Class="mb-3" />
+        <!-- Page Header -->
+        <div class="d-flex align-center justify-space-between mb-4">
+            <div>
+                <MudText Typo="Typo.h4" Class="mb-2">@_issue.Title</MudText>
+                <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                    @L["Reference"] #@_issue.ReferenceNumber
+                </MudText>
+            </div>
+            <div class="d-flex align-center gap-2">
+                <MudButton Variant="Variant.Text" 
+                           Size="Size.Small" 
+                           StartIcon="Icons.Material.Filled.ArrowBack"
+                           Href="/issues">
+                    @L["Back to Issues"]
+                </MudButton>
+            </div>
+        </div>
+
+        <!-- Tab Container -->
+        <MudTabs @bind-ActivePanelIndex="@_activeTabIndex" 
+                 Elevation="4" 
+                 Rounded="true" 
+                 PanelClass="pa-6">
+            
+            <!-- Issue Details Tab -->
+            <MudTabPanel Text="@L["Issue Details"]" Icon="@Icons.Material.Filled.BugReport">
+                <MudGrid>
+                    <!-- Main Issue Information -->
+                    <MudItem xs="12" lg="8">
+                        <MudPaper Class="pa-4 mb-4">
+                            <MudDivider Class="mb-3" />
                     
                     <MudGrid>
                         <MudItem xs="12" md="6">
@@ -182,7 +191,15 @@
                 <!-- Enhanced Timeline -->
                 <IssueTimelineComponent TimelineEvents="_timelineEvents" />
             </MudItem>
-        </MudGrid>
+                </MudGrid>
+            </MudTabPanel>
+
+            <!-- Conversation Tab -->
+            <MudTabPanel Text="@L["Conversation"]" Icon="@Icons.Material.Filled.Chat">
+                <IssueConversationTabComponent IssueId="_issue.Id" 
+                                               ConversationId="_issue.ConversationId" />
+            </MudTabPanel>
+        </MudTabs>
     }
 </MudContainer>
 
@@ -193,6 +210,7 @@
     private List<TimelineEventDto>? _timelineEvents;
     private bool _loading = true;
     private bool _canEdit = false;
+    private int _activeTabIndex = 0;
 
     protected override async Task OnInitializedAsync()
     {

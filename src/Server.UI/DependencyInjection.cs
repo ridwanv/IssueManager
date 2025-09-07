@@ -3,6 +3,7 @@ using CleanArchitecture.Blazor.Application;
 using CleanArchitecture.Blazor.Application.Common.Constants.Localization;
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
 using CleanArchitecture.Blazor.Infrastructure.Services.Identity;
+using CleanArchitecture.Blazor.Infrastructure.BackgroundJobs;
 using CleanArchitecture.Blazor.Server.UI.Hubs;
 using CleanArchitecture.Blazor.Server.UI.Middlewares;
 using CleanArchitecture.Blazor.Server.UI.Services;
@@ -333,6 +334,9 @@ public static class DependencyInjection
                 await next();
             });
         }
+        
+        // Schedule background jobs
+        ProcessCompletedConversationsJob.ScheduleRecurringJob();
        
         return app;
     }

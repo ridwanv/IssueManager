@@ -1,0 +1,61 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Server.UI.Components.Common
+
+<div Style="flex: 1; overflow-y: auto; padding: 16px;" Class="message-container" id="messages-container">
+    @if (ConversationDetails?.Messages?.Any() == true)
+    {
+        <div class="d-flex flex-column gap-4" id="messages-container">
+            @foreach (var message in ConversationDetails.Messages.OrderBy(m => m.Timestamp))
+            {
+                <div class="@GetMessageContainerClass(message.Role)">
+                    <div class="@GetMessageBubbleClass(message.Role)" 
+                        style="@GetMessageBubbleStyle(message.Role)">
+                        <div class="message-header">
+                            <div class="d-flex align-center gap-2">
+                                <MudAvatar Size="Size.Small" 
+                                          Color="@GetMessageAvatarColor(message.Role)">
+                                    @GetMessageAvatarIcon(message.Role)
+                                </MudAvatar>
+                                <MudText Typo="Typo.caption" Class="font-weight-medium">
+                                    @(message.UserName ?? GetRoleDisplayName(message.Role))
+                                </MudText>
+                            </div>
+                            <TimeAgo Timestamp="@message.Timestamp" 
+                                    Class="mud-typography-caption mud-secondary-text"
+                                    AutoRefresh="true" />
+                        </div>
+                        <div class="message-content">
+                            <MudText Typo="Typo.body2" Class="message-text">
+                                @message.Content
+                            </MudText>
+                        </div>
+                        @if (!string.IsNullOrEmpty(message.Role) && message.Role != "user")
+                        {
+                            <div class="message-footer">
+                                <MudChip T="string" Size="Size.Small" 
+                                        Color="@GetRoleChipColor(message.Role)"
+                                        Variant="Variant.Text">
+                                    @message.Role
+                                </MudChip>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        <!-- Typing Indicator -->
+        <TypingIndicator ConversationId="@(ConversationDetails.Conversation.Id.ToString())" Visible="@CustomerTyping" />
+    }
+    else
+    {
+        <div class="d-flex flex-column align-center justify-center" style="height: 100%;">
+            <MudIcon Icon="@Icons.Material.Filled.ChatBubbleOutline" Style="font-size: 3rem; opacity: 0.3;" />
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mt-2">
+                @L["No messages in this conversation"]
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                @L["Messages will appear here when the conversation starts"]
+            </MudText>
+        </div>
+    }
+</div>

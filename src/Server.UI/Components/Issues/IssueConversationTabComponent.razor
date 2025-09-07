@@ -1,0 +1,48 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationById
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Server.UI.Components.Conversations
+@using CleanArchitecture.Blazor.Application.Common.Security
+@attribute [Authorize(Policy = Permissions.Conversations.View)]
+
+<div class="issue-conversation-tab">
+    @if (_loading)
+    {
+        <div class="d-flex justify-center align-center" style="height: 400px;">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+        </div>
+    }
+    else if (_conversationDetails != null)
+    {
+        <MudCard Style="height: 600px; display: flex; flex-direction: column;">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <div class="d-flex align-center justify-space-between">
+                        <MudText Typo="Typo.h6">@L["Conversation Messages"]</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">
+                            @(_conversationDetails.Messages?.Count ?? 0) @L["messages"]
+                        </MudChip>
+                    </div>
+                </CardHeaderContent>
+            </MudCardHeader>
+            
+            <ConversationMessagesComponent ConversationDetails="@_conversationDetails" 
+                                           CustomerTyping="@_customerTyping" />
+            
+            <ConversationInteractionComponent ConversationDetails="@_conversationDetails"
+                                              OnMessageSent="HandleNewMessage"
+                                              SendingMessage="@_sendingMessage" />
+        </MudCard>
+    }
+    else
+    {
+        <div class="d-flex flex-column align-center justify-center" style="height: 400px;">
+            <MudIcon Icon="@Icons.Material.Filled.ChatBubbleOutline" Style="font-size: 3rem; opacity: 0.3;" />
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mt-2">
+                @L["No conversation linked to this issue"]
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                @L["This issue was not created from a conversation or the conversation is no longer available"]
+            </MudText>
+        </div>
+    }
+</div>

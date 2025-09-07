@@ -1,0 +1,30 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Domain.Enums
+
+<!-- Message Input Component for Agent -->
+@if (ConversationDetails?.Conversation?.Status == ConversationStatus.Active && 
+     ConversationDetails.Conversation.Mode == ConversationMode.Human &&
+     !string.IsNullOrEmpty(ConversationDetails.Conversation.CurrentAgentId))
+{
+    <MessageInputComponent ConversationId="@(ConversationDetails.Conversation.Id.ToString())"
+                         OnMessageSent="HandleMessageSent"
+                         Disabled="SendingMessage" />
+}
+else if (ConversationDetails?.Conversation?.Mode == ConversationMode.Escalating)
+{
+    <div class="message-input-placeholder">
+        <MudAlert Severity="Severity.Info" Class="ma-4">
+            <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Class="mr-2" />
+            @L["This conversation is escalated and waiting for agent acceptance."]
+        </MudAlert>
+    </div>
+}
+else if (ConversationDetails?.Conversation?.Status != ConversationStatus.Active)
+{
+    <div class="message-input-placeholder">
+        <MudAlert Severity="Severity.Warning" Class="ma-4">
+            <MudIcon Icon="@Icons.Material.Filled.ChatBubbleOutline" Class="mr-2" />
+            @L["This conversation is not active and cannot receive messages."]
+        </MudAlert>
+    </div>
+}

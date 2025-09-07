@@ -6,7 +6,6 @@
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationById
 @using CleanArchitecture.Blazor.Server.UI.Components.Conversations
 @using CleanArchitecture.Blazor.Server.UI.Components.Common
-@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
 @using CleanArchitecture.Blazor.Server.UI.Services.SignalR
 @using Microsoft.AspNetCore.SignalR.Client
 @using System.Timers
@@ -198,6 +197,9 @@
                             </MudCardContent>
                         </MudCard>
                     }
+
+                    <!-- AI Insights -->
+                    <ConversationInsightsComponent ConversationId="@(conversationDetails?.Conversation.Id ?? 0)" />
                 </MudItem>
 
                 <!-- Right Column - Messages -->
@@ -216,83 +218,12 @@
                                 </div>
                             </CardHeaderContent>
                         </MudCardHeader>
-                        <MudCardContent Style="flex: 1; overflow-y: auto; padding: 16px;" Class="message-container" id="messages-container">
-                            @if (conversationDetails.Messages?.Any() == true)
-                            {
-                                <div class="d-flex flex-column gap-4" id="messages-container">
-                                    @foreach (var message in conversationDetails.Messages.OrderBy(m => m.Timestamp))
-                                    {
-                                        <div class="@GetMessageContainerClass(message.Role)">
-                                            <div class="@GetMessageBubbleClass(message.Role)" 
-                                                style="@GetMessageBubbleStyle(message.Role)">
-                                                <div class="message-header">
-                                                    <div class="d-flex align-center gap-2">
-                                                        <MudAvatar Size="Size.Small" 
-                                                                  Color="@GetMessageAvatarColor(message.Role)">
-                                                            @GetMessageAvatarIcon(message.Role)
-                                                        </MudAvatar>
-                                                        <MudText Typo="Typo.caption" Class="font-weight-medium">
-                                                            @(message.UserName ?? GetRoleDisplayName(message.Role))
-                                                        </MudText>
-                                                    </div>
-                                                    <TimeAgo Timestamp="@message.Timestamp" 
-                                                            Class="mud-typography-caption mud-secondary-text"
-                                                            AutoRefresh="true" />
-                                                </div>
-                                                <div class="message-content">
-                                                    <MudText Typo="Typo.body2" Class="message-text">
-                                                        @message.Content
-                                                    </MudText>
-                                                </div>
-                                                @if (!string.IsNullOrEmpty(message.Role) && message.Role != "user")
-                                                {
-                                                    <div class="message-footer">
-                                                        <MudChip T="string" Size="Size.Small" 
-                                                                Color="@GetRoleChipColor(message.Role)"
-                                                                Variant="Variant.Text">
-                                                            @message.Role
-                                                        </MudChip>
-                                                    </div>
-                                                }
-                                            </div>
-                                        </div>
-                                    }
-                                </div>
-                                <!-- Typing Indicator -->
-                                <TypingIndicator ConversationId="@ConversationId" Visible="@_customerTyping" />
-                            }
-                            else
-                            {
-                                <div class="d-flex flex-column align-center justify-center" style="height: 100%;">
-                                    <MudIcon Icon="@Icons.Material.Filled.ChatBubbleOutline" Style="font-size: 3rem; opacity: 0.3;" />
-                                    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mt-2">
-                                        @L["No messages in this conversation"]
-                                    </MudText>
-                                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-                                        @L["Messages will appear here when the conversation starts"]
-                                    </MudText>
-                                </div>
-                            }
-                        </MudCardContent>
+                        <ConversationMessagesComponent ConversationDetails="@conversationDetails" 
+                                                       CustomerTyping="@_customerTyping" />
                         
-                        <!-- Message Input Component for Agent -->
-                        @if (conversationDetails.Conversation.Status == ConversationStatus.Active && 
-                             conversationDetails.Conversation.Mode == ConversationMode.Human &&
-                             !string.IsNullOrEmpty(conversationDetails.Conversation.CurrentAgentId))
-                        {
-                            <MessageInputComponent ConversationId="@ConversationId"
-                                                 OnMessageSent="HandleNewMessage"
-                                                 Disabled="_sendingMessage" />
-                        }
-                        else if (conversationDetails.Conversation.Mode == ConversationMode.Escalating)
-                        {
-                            <div class="message-input-placeholder">
-                                <MudAlert Severity="Severity.Info" Class="ma-4">
-                                    <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Class="mr-2" />
-                                    This conversation is escalated and waiting for agent acceptance.
-                                </MudAlert>
-                            </div>
-                        }
+                        <ConversationInteractionComponent ConversationDetails="@conversationDetails"
+                                                          OnMessageSent="HandleNewMessage"
+                                                          SendingMessage="@_sendingMessage" />
                     </MudCard>
                 </MudItem>
             </MudGrid>
@@ -577,63 +508,6 @@
             : "background-color: var(--mud-palette-surface);";
     }
 
-    private string GetMessageContainerClass(string role)
-    {
-        return role == "user" ? "d-flex justify-end" : "d-flex justify-start";
-    }
-
-    private string GetMessageBubbleClass(string role)
-    {
-        return role == "user" 
-            ? "message-bubble user-message" 
-            : "message-bubble assistant-message";
-    }
-
-    private string GetMessageBubbleStyle(string role)
-    {
-        return role == "user"
-            ? "max-width: 70%; background: linear-gradient(135deg, var(--mud-palette-primary) 0%, var(--mud-palette-primary-darken) 100%); color: white; margin-left: auto;"
-            : "max-width: 70%; background: var(--mud-palette-surface); border: 1px solid var(--mud-palette-lines-default); margin-right: auto;";
-    }
-
-    private Color GetMessageAvatarColor(string role)
-    {
-        return role == "user" ? Color.Primary : Color.Secondary;
-    }
-
-    private string GetMessageAvatarIcon(string role)
-    {
-        return role == "user" ? "U" : role switch
-        {
-            "assistant" => "A",
-            "agent" => "AG",
-            "system" => "S",
-            _ => "?"
-        };
-    }
-
-    private string GetRoleDisplayName(string role)
-    {
-        return role switch
-        {
-            "user" => L["User"],
-            "assistant" => L["Assistant"],
-            "agent" => L["Agent"],
-            "system" => L["System"],
-            _ => role ?? L["Unknown"]
-        };
-    }
-
-    private Color GetRoleChipColor(string role)
-    {
-        return role switch
-        {
-            "assistant" => Color.Info,
-            "agent" => Color.Success,
-            "system" => Color.Warning,
-            _ => Color.Default
-        };
-    }
     
     private async Task InitializeSignalR()
     {

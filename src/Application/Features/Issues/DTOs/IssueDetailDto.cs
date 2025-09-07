@@ -44,6 +44,9 @@ public class IssueDetailDto
     [Description("Reporter Contact")]
     public ContactDto? ReporterContact { get; set; }
     
+    [Description("Conversation Id")]
+    public int? ConversationId { get; set; }
+    
     [Description("Assigned User Id")]
     public string? AssignedUserId { get; set; }
     

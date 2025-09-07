@@ -11,14 +11,150 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250904084929_initial111")]
-    partial class initial111
+    [Migration("20250906144323_AddConversationIdToIssues")]
+    partial class AddConversationIdToIssues
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.8");
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Agent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ActiveConversationCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApplicationUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastActiveAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxConcurrentConversations")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Skills")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId")
+                        .IsUnique();
+
+                    b.HasIndex("Priority");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("Agents");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.AgentNotificationPreferences", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApplicationUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AudioVolume")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CustomSoundUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("EnableAudioAlerts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("EnableBrowserNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("EnableEmailNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NotifyDuringBreak")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnCriticalPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnHighPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnStandardPriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyWhenOffline")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ApplicationUserId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("AgentNotificationPreferences");
+                });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Attachment", b =>
                 {
@@ -181,6 +317,433 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.ToTable("Contacts");
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Conversation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConversationReference")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConversationSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CurrentAgentId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EscalatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EscalationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastActivityAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxTurns")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MessageCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ThreadId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WhatsAppPhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationReference")
+                        .IsUnique();
+
+                    b.HasIndex("LastActivityAt");
+
+                    b.HasIndex("Mode");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("Status", "Mode");
+
+                    b.ToTable("Conversations");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BotFrameworkConversationId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileData")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("FileSize")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentType");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("MessageId");
+
+                    b.ToTable("ConversationAttachments");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationHandoff", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContextData")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ConversationReference")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConversationTranscript")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FromAgentId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FromParticipantType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("HandoffType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("InitiatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToAgentId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ToParticipantType")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("FromAgentId");
+
+                    b.HasIndex("HandoffType");
+
+                    b.HasIndex("InitiatedAt");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("ToAgentId");
+
+                    b.ToTable("ConversationHandoffs");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Attachments")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BotFrameworkConversationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ChannelId")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImageData")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImageType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEscalated")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToolCallId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToolCalls")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BotFrameworkConversationId");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("Timestamp");
+
+                    b.HasIndex("BotFrameworkConversationId", "Timestamp");
+
+                    b.ToTable("ConversationMessages");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationParticipant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LeftAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParticipantId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParticipantName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("WhatsAppPhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("ParticipantId");
+
+                    b.HasIndex("Type");
+
+                    b.HasIndex("WhatsAppPhoneNumber");
+
+                    b.ToTable("ConversationParticipants");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Document", b =>
                 {
                     b.Property<int>("Id")
@@ -246,7 +809,8 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Id");
 
                     b.Property<DateTime?>("Created")
                         .HasColumnType("TEXT");
@@ -256,13 +820,12 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("CreatedUtc");
 
                     b.Property<Guid>("IssueId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("IssueId1")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("IssueId");
 
                     b.Property<DateTime?>("LastModified")
                         .HasColumnType("TEXT");
@@ -274,31 +837,107 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.Property<string>("Payload")
                         .IsRequired()
                         .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Payload");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("TenantId");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("IX_EventLogs_IssueId");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_EventLogs_TenantId");
+
+                    b.HasIndex("Type")
+                        .HasDatabaseName("IX_EventLogs_Type");
+
+                    b.HasIndex("IssueId", "CreatedUtc")
+                        .HasDatabaseName("IX_EventLogs_IssueId_CreatedUtc");
+
+                    b.ToTable("EventLogs", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.InternalNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("Content");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("CreatedAt");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("CreatedByUserId");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("IssueId");
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
                         .HasMaxLength(450)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("TenantId");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IssueId");
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("IX_InternalNotes_IssueId");
 
-                    b.HasIndex("IssueId1");
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_InternalNotes_TenantId");
 
-                    b.ToTable("EventLogs");
+                    b.HasIndex("IssueId", "CreatedAt")
+                        .HasDatabaseName("IX_InternalNotes_IssueId_CreatedAt");
+
+                    b.ToTable("InternalNotes", (string)null);
                 });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Issue", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AssignedUserId")
+                        .HasMaxLength(450)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Category")
@@ -309,6 +948,9 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("ConsentFlag")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ConversationId")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("Created")
@@ -324,6 +966,20 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("DuplicateOfId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("JiraCreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("JiraKey")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("JiraLastSyncAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("JiraUrl")
+                        .HasMaxLength(450)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("LastModified")
@@ -387,6 +1043,8 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ConversationId");
+
                     b.HasIndex("DuplicateOfId");
 
                     b.HasIndex("ReferenceNumber")
@@ -397,6 +1055,72 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.HasIndex("TenantId");
 
                     b.ToTable("Issues");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.IssueLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ChildIssueId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("ConfidenceScore")
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("CreatedBySystem")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LinkType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Metadata")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ParentIssueId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChildIssueId");
+
+                    b.HasIndex("ParentIssueId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ConfidenceScore", "TenantId");
+
+                    b.HasIndex("CreatedBySystem", "TenantId");
+
+                    b.HasIndex("LinkType", "TenantId");
+
+                    b.HasIndex("ParentIssueId", "ChildIssueId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("IssueLinks");
                 });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.PicklistSet", b =>
@@ -1008,6 +1732,28 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.ToTable("DataProtectionKeys");
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Agent", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Identity.ApplicationUser", "ApplicationUser")
+                        .WithMany("Agents")
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApplicationUser");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.AgentNotificationPreferences", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Identity.ApplicationUser", "ApplicationUser")
+                        .WithMany()
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApplicationUser");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Attachment", b =>
                 {
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", null)
@@ -1035,6 +1781,57 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationAttachment", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.ConversationMessage", "Message")
+                        .WithMany("AttachmentEntities")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("Message");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationHandoff", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
+                        .WithMany("Handoffs")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationMessage", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationParticipant", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
+                        .WithMany("Participants")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Document", b =>
                 {
                     b.HasOne("CleanArchitecture.Blazor.Domain.Identity.ApplicationUser", "CreatedByUser")
@@ -1060,15 +1857,20 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.EventLog", b =>
                 {
-                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", null)
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "Issue")
                         .WithMany("EventLogs")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.InternalNote", b =>
+                {
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "Issue")
-                        .WithMany()
-                        .HasForeignKey("IssueId1")
+                        .WithMany("InternalNotes")
+                        .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1077,6 +1879,11 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Issue", b =>
                 {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "DuplicateOf")
                         .WithMany()
                         .HasForeignKey("DuplicateOfId")
@@ -1087,9 +1894,30 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .HasForeignKey("ReporterContactId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.Navigation("Conversation");
+
                     b.Navigation("DuplicateOf");
 
                     b.Navigation("ReporterContact");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.IssueLink", b =>
+                {
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "ChildIssue")
+                        .WithMany("ParentLinks")
+                        .HasForeignKey("ChildIssueId")
+                        .OnDelete(DeleteBehavior.ClientCascade)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "ParentIssue")
+                        .WithMany("ChildLinks")
+                        .HasForeignKey("ParentIssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChildIssue");
+
+                    b.Navigation("ParentIssue");
                 });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Identity.ApplicationRole", b =>
@@ -1197,11 +2025,31 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Conversation", b =>
+                {
+                    b.Navigation("Handoffs");
+
+                    b.Navigation("Messages");
+
+                    b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationMessage", b =>
+                {
+                    b.Navigation("AttachmentEntities");
+                });
+
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Issue", b =>
                 {
                     b.Navigation("Attachments");
 
+                    b.Navigation("ChildLinks");
+
                     b.Navigation("EventLogs");
+
+                    b.Navigation("InternalNotes");
+
+                    b.Navigation("ParentLinks");
                 });
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Identity.ApplicationRole", b =>
@@ -1213,6 +2061,8 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Identity.ApplicationUser", b =>
                 {
+                    b.Navigation("Agents");
+
                     b.Navigation("Logins");
 
                     b.Navigation("Tokens");
