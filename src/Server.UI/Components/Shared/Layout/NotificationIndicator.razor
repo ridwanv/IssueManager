@@ -24,10 +24,10 @@
         </MudBadge>
     </ActivatorContent>
     <ChildContent>
-        @if (_notifications.Count == 0)
+        @if (GetGroupedNotifications().Count == 0)
         {
             <MudMenuItem>
-                <MudText Typo="Typo.body2" Class="pa-2">No new notifications</MudText>
+                <MudText Typo="Typo.body2" Class="pa-2">No new conversations</MudText>
             </MudMenuItem>
         }
         else
@@ -36,24 +36,33 @@
                 <MudText Typo="Typo.caption" Class="pa-1">Mark all as read</MudText>
             </MudMenuItem>
             <MudDivider />
-            @foreach (var notification in _notifications.Take(10))
+            @foreach (var conversation in GetGroupedNotifications().Take(10))
             {
-                <MudMenuItem OnClick="@(() => HandleNotificationItemClick(notification))" Class="notification-item">
-                    <div class="d-flex flex-column pa-1" style="max-width: 300px;">
-                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                            @notification.From - @notification.Timestamp.ToString("HH:mm")
+                <MudMenuItem OnClick="@(() => HandleConversationClick(conversation))" Class="notification-item conversation-item">
+                    <div class="d-flex flex-column pa-2" style="max-width: 320px;">
+                        <div class="d-flex justify-space-between align-center mb-1">
+                            <MudText Typo="Typo.subtitle2" Class="mud-text-primary">
+                                Conversation @conversation.ConversationId
+                            </MudText>
+                            @if (conversation.UnreadCount > 1)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error" Text="@conversation.UnreadCount.ToString()" />
+                            }
+                        </div>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary mb-1">
+                            @conversation.LatestFrom - @conversation.LatestTimestamp.ToString("HH:mm")
                         </MudText>
                         <MudText Typo="Typo.body2" Class="text-truncate">
-                            @notification.Message
+                            @conversation.LatestMessage
                         </MudText>
                     </div>
                 </MudMenuItem>
             }
-            @if (_notifications.Count > 10)
+            @if (GetGroupedNotifications().Count > 10)
             {
                 <MudDivider />
                 <MudMenuItem>
-                    <MudText Typo="Typo.caption" Class="pa-1">+@(_notifications.Count - 10) more...</MudText>
+                    <MudText Typo="Typo.caption" Class="pa-1">+@(GetGroupedNotifications().Count - 10) more conversations...</MudText>
                 </MudMenuItem>
             }
         }
@@ -83,6 +92,15 @@
         public DateTime Timestamp { get; set; }
         public bool IsFromAgent { get; set; }
         public bool IsRead { get; set; }
+    }
+
+    public class ConversationNotification
+    {
+        public string ConversationId { get; set; } = string.Empty;
+        public string LatestFrom { get; set; } = string.Empty;
+        public string LatestMessage { get; set; } = string.Empty;
+        public DateTime LatestTimestamp { get; set; }
+        public int UnreadCount { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -288,7 +306,7 @@
             };
 
             _notifications.Insert(0, assignmentNotification);
-            _notificationCount = _notifications.Count(n => !n.IsRead);
+            _notificationCount = GetConversationCount();
 
             StartBlinking();
             await InvokeAsync(StateHasChanged);
@@ -374,7 +392,7 @@
                     _notifications.RemoveRange(50, _notifications.Count - 50);
                 }
 
-                _notificationCount = _notifications.Count(n => !n.IsRead);
+                _notificationCount = GetConversationCount();
                 Console.WriteLine($"[NotificationIndicator] Notification added. Unread={_notificationCount}");
 
                 StartBlinking();
@@ -458,7 +476,7 @@
                     _notifications.RemoveRange(50, _notifications.Count - 50);
                 }
 
-                _notificationCount = _notifications.Count(n => !n.IsRead);
+                _notificationCount = GetConversationCount();
                 Console.WriteLine($"[NotificationIndicator] Added notification. Total count: {_notificationCount}");
 
                 StartBlinking();
@@ -629,7 +647,7 @@
     private async Task HandleNotificationItemClick(NotificationItem notification)
     {
         notification.IsRead = true;
-        _notificationCount = _notifications.Count(n => !n.IsRead);
+        _notificationCount = GetConversationCount();
 
         if (_notificationCount == 0)
         {
@@ -643,6 +661,65 @@
         {
             await OnNotificationItemClick.InvokeAsync(notification);
         }
+    }
+
+    private async Task HandleConversationClick(ConversationNotification conversation)
+    {
+        // Mark all messages in this conversation as read
+        foreach (var notification in _notifications.Where(n => n.ConversationId == conversation.ConversationId))
+        {
+            notification.IsRead = true;
+        }
+        
+        _notificationCount = GetConversationCount();
+
+        if (_notificationCount == 0)
+        {
+            StopBlinking();
+        }
+
+        await InvokeAsync(StateHasChanged);
+
+        // Create a notification item for the callback to maintain compatibility
+        var notificationItem = new NotificationItem
+        {
+            ConversationId = conversation.ConversationId,
+            From = conversation.LatestFrom,
+            Message = conversation.LatestMessage,
+            Timestamp = conversation.LatestTimestamp,
+            IsRead = true
+        };
+
+        // Invoke the parent callback with the conversation details
+        if (OnNotificationItemClick.HasDelegate)
+        {
+            await OnNotificationItemClick.InvokeAsync(notificationItem);
+        }
+    }
+
+    private List<ConversationNotification> GetGroupedNotifications()
+    {
+        return _notifications
+            .Where(n => !n.IsRead && !n.IsFromAgent) // Only show unread user messages
+            .GroupBy(n => n.ConversationId)
+            .Select(g => new ConversationNotification
+            {
+                ConversationId = g.Key,
+                LatestFrom = g.OrderByDescending(n => n.Timestamp).First().From,
+                LatestMessage = g.OrderByDescending(n => n.Timestamp).First().Message,
+                LatestTimestamp = g.OrderByDescending(n => n.Timestamp).First().Timestamp,
+                UnreadCount = g.Count()
+            })
+            .OrderByDescending(c => c.LatestTimestamp)
+            .ToList();
+    }
+
+    private int GetConversationCount()
+    {
+        return _notifications
+            .Where(n => !n.IsRead && !n.IsFromAgent) // Only count unread user messages
+            .GroupBy(n => n.ConversationId)
+            .Count();
     }
 
     public ValueTask DisposeAsync()
@@ -692,5 +769,18 @@
 
         .notification-item:last-child {
             border-bottom: none;
+        }
+
+    .conversation-item {
+        min-height: 80px;
+    }
+
+        .conversation-item .mud-text-primary {
+            font-weight: 600;
+        }
+
+        .conversation-item .mud-chip {
+            min-width: 24px;
+            height: 20px;
         }
 </style>
