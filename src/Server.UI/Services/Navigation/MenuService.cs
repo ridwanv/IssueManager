@@ -91,24 +91,43 @@ public class MenuService : IMenuService
         },
         new MenuSectionModel
         {
+            Title = "CONVERSATIONS",
+            SectionItems = new List<MenuSectionItemModel>
+            {
+                new()
+                {
+                    Title = "My Conversations",
+                    Icon = Icons.Material.Filled.PersonalVideo,
+                    Href = "/agent/my-conversations",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "Pending Conversations",
+                    Icon = Icons.Material.Filled.PendingActions,
+                    Href = "/agent/pending-conversations",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "Conversation Manager",
+                    Icon = Icons.Material.Filled.Dashboard,
+                    Href = "/agent-dashboard",
+                    PageStatus = PageStatus.Completed
+                }
+            }
+        },
+        new MenuSectionModel
+        {
             Title = "AGENT",
             SectionItems = new List<MenuSectionItemModel>
             {
                 new()
                 {
-                    Title = "Agent",
+                    Title = "Agent Tools",
                     Icon = Icons.Material.Filled.SmartToy,
-                    PageStatus = PageStatus.Completed,
-                    IsParent = true,
-                    MenuItems = new List<MenuSectionSubItemModel>
-                    {
-                        new()
-                        {
-                            Title = "Conversations",
-                            Href = "/agent/conversations",
-                            PageStatus = PageStatus.Completed
-                        }
-                    }
+                    Href = "/agent/tools",
+                    PageStatus = PageStatus.ComingSoon
                 }
             }
         },

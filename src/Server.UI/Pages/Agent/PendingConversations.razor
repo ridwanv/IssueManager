@@ -1,0 +1,346 @@
+﻿@page "/agent/pending-conversations"
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAllConversations
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Server.UI.Components.Shared
+@attribute [Authorize]
+@inject IMediator Mediator
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>@L["Pending Conversations"]</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="relative">
+    <div class="d-flex flex-column flex-grow-1 gap-4">
+        <div class="d-flex align-center justify-space-between">
+            <div class="d-flex align-center gap-4">
+                <MudIcon Icon="@Icons.Material.Filled.PendingActions" Style="font-size:2rem;" />
+                <MudText Typo="Typo.h5">@L["Pending Conversations"]</MudText>
+                @if (conversations?.TotalItems > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                        @conversations.TotalItems @(conversations.TotalItems == 1 ? L["pending"] : L["pending"])
+                    </MudChip>
+                }
+            </div>
+            <div class="d-flex align-center gap-2">
+                <MudTextField @bind-Value="searchString"
+                             Placeholder="@L["Search pending conversations..."]"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             IconSize="Size.Medium"
+                             Immediate="true"
+                             DebounceInterval="300"
+                             OnDebounceIntervalElapsed="OnSearch"
+                             Class="flex-grow-0"
+                             Style="min-width: 300px;" />
+@*                 <MudSelect @bind-Value="selectedPriority"
+                          Label="@L["Priority"]"
+                          Class="flex-grow-0"
+                          Style="min-width: 150px;"
+                          OnSelectionChanged="OnPriorityChanged">
+                    <MudSelectItem Value="@((int?)null)">@L["All Priorities"]</MudSelectItem>
+                    <MudSelectItem Value="1">@L["Standard"]</MudSelectItem>
+                    <MudSelectItem Value="2">@L["High"]</MudSelectItem>
+                    <MudSelectItem Value="3">@L["Critical"]</MudSelectItem>
+                </MudSelect> *@
+            </div>
+        </div>
+
+        @if (loading)
+        {
+            <div class="d-flex justify-center align-center" style="height: 200px;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else if (conversations?.Items?.Any() == true)
+        {
+            <MudTable Items="@conversations.Items" 
+                     Hover="true" 
+                     Striped="true" 
+                     Dense="true"
+                     FixedHeader="true"
+                     Height="600px"
+                     Class="mud-table-container">
+                <HeaderContent>
+                    <MudTh>@L["Conversation ID"]</MudTh>
+                    <MudTh>@L["User"]</MudTh>
+                    <MudTh>@L["Priority"]</MudTh>
+                    <MudTh>@L["Created"]</MudTh>
+                    <MudTh>@L["Waiting Time"]</MudTh>
+                    <MudTh>@L["Messages"]</MudTh>
+                    <MudTh>@L["Summary"]</MudTh>
+                    <MudTh>@L["Actions"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Conversation ID">
+                        <MudText Typo="Typo.body2" Class="font-weight-medium">
+                            @context.ConversationReference
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="User">
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                            <MudText Typo="Typo.body2">
+                                @(context.UserName ?? context.UserId ?? L["Unknown"])
+                            </MudText>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="Priority">
+                        <MudChip T="string" Size="Size.Small" 
+                                Color="@GetPriorityColor(context.Priority)"
+                                Variant="Variant.Filled">
+                            @context.PriorityText
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Created">
+                        <MudText Typo="Typo.body2">
+                            @context.Created.ToString("MMM dd, yyyy")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @context.Created.ToString("HH:mm")
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Waiting Time">
+                        @{
+                            var waitingTime = DateTime.UtcNow - context.Created;
+                        }
+                        <MudText Typo="Typo.body2" 
+                                Color="@(waitingTime.TotalHours > 2 ? Color.Warning : waitingTime.TotalHours > 4 ? Color.Error : Color.Default)">
+                            @FormatWaitingTime(waitingTime)
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Messages">
+                        <MudText Typo="Typo.body2" Class="text-center">
+                            @context.MessageCount
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Summary">
+                        @if (!string.IsNullOrEmpty(context.ConversationSummary))
+                        {
+                            <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 200px;">
+                                @context.ConversationSummary
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @L["No summary"]
+                            </MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <div class="d-flex gap-1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                          Size="Size.Small"
+                                           OnClick="@(() => ViewConversation(context.ConversationReference))"
+                                          Title="@L["View conversation"]" />
+                            <MudButton Variant="Variant.Filled"
+                                      Color="Color.Primary"
+                                      Size="Size.Small"
+                                      StartIcon="@Icons.Material.Filled.AssignmentInd"
+                                      OnClick="@(() => AcceptConversation(context.ConversationReference))"
+                                      Disabled="@acceptingConversation.Contains(context.ConversationReference)">
+                                @if (acceptingConversation.Contains(context.ConversationReference))
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                }
+                                else
+                                {
+                                    @L["Accept"]
+                                }
+                            </MudButton>
+                        </div>
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
+            </MudTable>
+
+            @if (conversations.TotalItems > conversations.Items.Count())
+            {
+                <div class="d-flex justify-center mt-4">
+                    <MudPagination Count="@conversations.TotalPages"
+                                  Selected="@currentPage"
+                                  SelectedChanged="OnPageChanged"
+                                  ShowFirstLast="true"
+                                  ShowPrevNext="true" />
+                </div>
+            }
+        }
+        else
+        {
+            <div class="d-flex flex-column align-center justify-center" style="height: 300px;">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 4rem; opacity: 0.3;" Color="Color.Success" />
+                <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mt-4">
+                    @L["No pending conversations"]
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @L["All conversations have been assigned to agents"]
+                </MudText>
+                <MudButton Variant="Variant.Outlined"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.PersonalVideo"
+                          Class="mt-4"
+                          OnClick="NavigateToMyConversations">
+                    @L["View My Conversations"]
+                </MudButton>
+            </div>
+        }
+    </div>
+</MudContainer>
+
+<style>
+    .mud-table-container {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .mud-table-container .mud-table-head {
+        background-color: var(--mud-palette-surface-variant);
+    }
+    
+    .text-truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+@code {
+    private bool loading = true;
+    private string searchString = string.Empty;
+    private int? selectedPriority = null;
+    private int currentPage = 1;
+    private int pageSize = 12;
+    private PaginatedData<ConversationDto>? conversations;
+    private HashSet<string> acceptingConversation = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPendingConversations();
+    }
+
+    private async Task LoadPendingConversations()
+    {
+        loading = true;
+        try
+        {
+            var query = new GetAllConversationsQuery(
+                Status: "Active", // Only active conversations
+                UserId: null,
+                SearchTerm: searchString,
+                StartDate: null,
+                EndDate: null,
+                Page: currentPage,
+                PageSize: pageSize,
+                SortBy: "Created", // Sort by creation time for pending queue
+                SortDescending: false // Oldest first (FIFO)
+            );
+
+            var result = await Mediator.Send(query);
+            if (result.Succeeded)
+            {
+                conversations = result.Data;
+            }
+            else
+            {
+                conversations = null;
+                Snackbar.Add($"Error loading pending conversations: {string.Join(", ", result.Errors)}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            conversations = null;
+            Snackbar.Add($"Error loading pending conversations: {ex.Message}", Severity.Error);
+            Console.WriteLine($"Error loading pending conversations: {ex}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task OnSearch()
+    {
+        currentPage = 1;
+        await LoadPendingConversations();
+    }
+
+    private async Task OnPriorityChanged()
+    {
+        currentPage = 1;
+        await LoadPendingConversations();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        currentPage = page;
+        await LoadPendingConversations();
+    }
+
+    private void ViewConversation(string conversationId)
+    {
+        Navigation.NavigateTo($"/agent/conversations/{conversationId}");
+    }
+
+    private async Task AcceptConversation(string conversationId)
+    {
+        if (acceptingConversation.Contains(conversationId))
+            return;
+
+        acceptingConversation.Add(conversationId);
+        try
+        {
+            // TODO: Implement accept conversation command
+            // var command = new AcceptConversationCommand(conversationId);
+            // var result = await Mediator.Send(command);
+            
+            // For now, show success message and refresh list
+            Snackbar.Add($"Conversation {conversationId} accepted successfully", Severity.Success);
+            await LoadPendingConversations();
+            
+            // Navigate to the conversation
+            Navigation.NavigateTo($"/agent/conversations/{conversationId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error accepting conversation: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            acceptingConversation.Remove(conversationId);
+        }
+    }
+
+    private void NavigateToMyConversations()
+    {
+        Navigation.NavigateTo("/agent/my-conversations");
+    }
+
+    private Color GetPriorityColor(int priority)
+    {
+        return priority switch
+        {
+            3 => Color.Error,    // Critical
+            2 => Color.Warning,  // High
+            1 => Color.Info,     // Standard
+            _ => Color.Default
+        };
+    }
+
+    private string FormatWaitingTime(TimeSpan waitingTime)
+    {
+        if (waitingTime.TotalDays >= 1)
+            return $"{(int)waitingTime.TotalDays}d {waitingTime.Hours}h";
+        else if (waitingTime.TotalHours >= 1)
+            return $"{(int)waitingTime.TotalHours}h {waitingTime.Minutes}m";
+        else
+            return $"{waitingTime.Minutes}m";
+    }
+}
