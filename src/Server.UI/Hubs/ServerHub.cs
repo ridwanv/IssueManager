@@ -200,6 +200,25 @@ public class ServerHub : Hub<ISignalRHub>
         await Clients.Group("Agents").ConversationEscalated(conversationId, reason, customerPhoneNumber).ConfigureAwait(false);
     }
 
+    // New methods for persistent escalation notifications
+    public async Task BroadcastEscalationPersistentNotification(string conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt)
+    {
+        Console.WriteLine($"[ServerHub] Broadcasting persistent escalation notification: {conversationId}, Priority: {priority}");
+        await Clients.Group("Agents").EscalationPersistentNotification(conversationId, reason, customerPhoneNumber, priority, escalatedAt).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastEscalationAccepted(string conversationId)
+    {
+        Console.WriteLine($"[ServerHub] Broadcasting escalation accepted: {conversationId}");
+        await Clients.Group("Agents").EscalationAccepted(conversationId).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastEscalationIgnored(string conversationId, string agentId)
+    {
+        Console.WriteLine($"[ServerHub] Broadcasting escalation ignored: {conversationId} by agent {agentId}");
+        await Clients.Group("Agents").EscalationIgnored(conversationId, agentId).ConfigureAwait(false);
+    }
+
     // Enhanced notification methods for improved agent dashboard
     public async Task BroadcastEscalationNotification(string conversationId, string reason, string customerPhoneNumber, int priority = 1, DateTime? escalatedAt = null)
     {

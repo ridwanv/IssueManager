@@ -1,10 +1,13 @@
 ﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationContext
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AcceptEscalation
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
+@using Microsoft.AspNetCore.SignalR.Client
 @inject IMediator Mediator
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject SignalRConnectionService SignalRService
 
 @if (_showPopup && _escalationData != null)
 {
@@ -111,10 +114,18 @@
     private bool _processing = false;
     private EscalationPopupDto? _escalationData;
     private int? _timeoutHandle;
+    private HubConnection? _hubConnection;
 
     [Parameter] public EventCallback<string> OnEscalationAccepted { get; set; }
     [Parameter] public EventCallback<string> OnEscalationDeclined { get; set; }
     [Parameter] public EventCallback<string> OnEscalationIgnored { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get SignalR connection for broadcasting escalation events
+        await SignalRService.EnsureConnectedAsync();
+        _hubConnection = SignalRService.HubConnection;
+    }
 
     public async Task ShowEscalation(string conversationId)
     {
@@ -197,6 +208,13 @@
 
             if (result.Succeeded)
             {
+                // Broadcast escalation acceptance to clear persistent notifications for ALL agents
+                if (_hubConnection?.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.InvokeAsync("BroadcastEscalationAccepted", _escalationData.ConversationReference);
+                    Console.WriteLine($"[EscalationPopup] Broadcasted escalation acceptance for {_escalationData.ConversationReference}");
+                }
+                
                 // Invoke the callback if it's set
                 if (OnEscalationAccepted.HasDelegate)
                 {
@@ -237,6 +255,26 @@
     private async Task IgnoreEscalation()
     {
         if (_escalationData == null) return;
+        
+        try
+        {
+            // Broadcast persistent escalation notification to all agents via SignalR
+            if (_hubConnection?.State == HubConnectionState.Connected)
+            {
+                await _hubConnection.InvokeAsync("BroadcastEscalationPersistentNotification", 
+                    _escalationData.ConversationReference,
+                    _escalationData.EscalationReason,
+                    _escalationData.PhoneNumber,
+                    _escalationData.Priority,
+                    _escalationData.EscalatedAt);
+                
+                Console.WriteLine($"[EscalationPopup] Broadcasted persistent notification for escalation {_escalationData.ConversationReference}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationPopup] Error broadcasting persistent notification: {ex.Message}");
+        }
         
         // Invoke the callback if it's set
         if (OnEscalationIgnored.HasDelegate)

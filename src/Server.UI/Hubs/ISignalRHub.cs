@@ -39,6 +39,11 @@ public interface ISignalRHub
     Task AgentStatusChanged(string agentId, string status);
     Task NewConversationMessage(string conversationId, string from, string message, bool isFromAgent);
     
+    // Persistent escalation notification methods
+    Task EscalationPersistentNotification(string conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt);
+    Task EscalationAccepted(string conversationId);
+    Task EscalationIgnored(string conversationId, string agentId);
+    
     // Enhanced agent notification methods
     Task EscalationNotification(string conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt);
     Task TargetedEscalationNotification(string conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt);

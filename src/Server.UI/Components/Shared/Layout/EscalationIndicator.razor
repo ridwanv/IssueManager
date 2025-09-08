@@ -1,0 +1,681 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using Microsoft.AspNetCore.SignalR.Client
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
+@using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using MudBlazor
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AcceptEscalation
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetPendingEscalations
+@using MediatR
+@inject SignalRConnectionService SignalRService
+@inject IUserProfileState UserProfileState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+@inject IMediator Mediator
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
+
+<MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" MaxHeight="500" Class="escalation-menu">
+    <ActivatorContent>
+        <MudTooltip Text="@GetTooltipText()" Arrow="true">
+            <MudBadge Content="@_escalationCount"
+                      Color="Color.Error"
+                      Overlap="true"
+                      Visible="@(_escalationCount > 0)"
+                      Class="@GetBadgeClass()">
+                <MudIconButton Icon="@GetEscalationIcon()"
+                               Color="@GetIconColor()"
+                               Size="Size.Medium" 
+                               Class="escalation-icon-button" />
+            </MudBadge>
+        </MudTooltip>
+    </ActivatorContent>
+    <ChildContent>
+        @if (_escalationNotifications.Count == 0)
+        {
+            <div class="escalation-empty-state pa-4 text-center">
+                <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Size="Size.Large" Class="mb-2 mud-text-secondary" />
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">No pending escalations</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-disabled">All escalations have been handled!</MudText>
+            </div>
+        }
+        else
+        {
+            <div class="escalation-header pa-2">
+                <div class="d-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Size="Size.Small" Class="mud-text-error" />
+                        <MudText Typo="Typo.subtitle2" Class="mud-text-error">
+                            @_escalationNotifications.Count Pending Escalations
+                        </MudText>
+                    </div>
+                </div>
+            </div>
+            <MudDivider Class="ma-0" />
+            <div class="escalation-list">
+                @foreach (var escalation in _escalationNotifications.Take(10))
+                {
+                    <MudMenuItem Class="escalation-item pa-0">
+                        <div class="d-flex align-start pa-3 gap-3" style="width: 100%; max-width: 380px;">
+                            <div class="escalation-avatar">
+                                <MudAvatar Size="Size.Medium" Color="@GetPriorityColor(escalation.EscalationData?.Priority ?? 1)">
+                                    <MudIcon Icon="@GetPriorityIcon(escalation.EscalationData?.Priority ?? 1)" Size="Size.Small" />
+                                </MudAvatar>
+                            </div>
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="d-flex justify-space-between align-center mb-1">
+                                    <MudText Typo="Typo.subtitle2" Class="mud-text-primary escalation-title">
+                                        @GetEscalationTitle(escalation)
+                                    </MudText>
+                                    <div class="d-flex align-center gap-1">
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary timestamp">
+                                            @GetTimeAgo(escalation.EscalationData?.EscalatedAt ?? escalation.Timestamp)
+                                        </MudText>
+                                        @if (escalation.EscalationData?.Priority > 1)
+                                        {
+                                            <MudChip T="string" 
+                                                     Size="Size.Small" 
+                                                     Color="@GetPriorityColor(escalation.EscalationData.Priority)" 
+                                                     Text="@GetPriorityText(escalation.EscalationData.Priority)"
+                                                     Class="priority-badge" />
+                                        }
+                                    </div>
+                                </div>
+                                <div class="d-flex align-center gap-1 mb-1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="customer-icon" />
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary customer-name">
+                                        @(escalation.EscalationData?.CustomerName ?? "Unknown Customer")
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-disabled">
+                                        | @(escalation.EscalationData?.PhoneNumber ?? "No phone")
+                                    </MudText>
+                                </div>
+                                <MudText Typo="Typo.body2" Class="escalation-reason">
+                                    @GetTruncatedReason(escalation.EscalationData?.EscalationReason ?? "Escalation requested")
+                                </MudText>
+                            </div>
+                            <div class="escalation-actions d-flex flex-column gap-1">
+                                <MudButton Size="Size.Small" 
+                                           Variant="Variant.Filled" 
+                                           Color="Color.Primary"
+                                           OnClick="@(() => AcceptEscalation(escalation))"
+                                           Class="accept-button">
+                                    Accept
+                                </MudButton>
+                                <MudButton Size="Size.Small" 
+                                           Variant="Variant.Text" 
+                                           Color="Color.Default"
+                                           OnClick="@(() => IgnoreEscalation(escalation))"
+                                           Class="ignore-button">
+                                    Ignore
+                                </MudButton>
+                            </div>
+                        </div>
+                    </MudMenuItem>
+                }
+            </div>
+            @if (_escalationNotifications.Count > 10)
+            {
+                <MudDivider Class="ma-0" />
+                <div class="escalation-footer pa-2 text-center">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" Class="mr-1" />
+                        +@(_escalationNotifications.Count - 10) more escalations
+                    </MudText>
+                </div>
+            }
+        }
+    </ChildContent>
+</MudMenu>
+
+@code {
+    [Parameter] public EventCallback<string> OnEscalationAccepted { get; set; }
+    [Parameter] public EventCallback<string> OnEscalationIgnored { get; set; }
+
+    private int _escalationCount = 0;
+    private bool _hasEscalations = false;
+    private string _currentUserId = string.Empty;
+    private readonly List<EscalationNotificationItem> _escalationNotifications = new();
+    private Timer? _blinkTimer;
+    private bool _isBlinking = false;
+    private HubConnection? _hubConnection;
+
+    public class EscalationNotificationItem
+    {
+        public string ConversationId { get; set; } = string.Empty;
+        public string From { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+        public EscalationData? EscalationData { get; set; }
+    }
+
+    public class EscalationData
+    {
+        public string ConversationId { get; set; } = string.Empty;
+        public string CustomerName { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string EscalationReason { get; set; } = string.Empty;
+        public int Priority { get; set; } = 1;
+        public DateTime EscalatedAt { get; set; }
+        public HashSet<string> IgnoredByAgents { get; set; } = new();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("[EscalationIndicator] OnInitializedAsync called");
+        GetCurrentUserId();
+        await InitializeSignalR();
+        await LoadPersistentEscalations();
+        Console.WriteLine("[EscalationIndicator] Component initialized and ready to receive escalation events");
+    }
+
+    private void GetCurrentUserId()
+    {
+        try
+        {
+            // Try to get user ID from UserProfileState first
+            var userProfile = UserProfileState.Value;
+            if (!string.IsNullOrEmpty(userProfile?.UserId))
+            {
+                _currentUserId = userProfile.UserId;
+                Console.WriteLine($"[EscalationIndicator] Got user ID from UserProfileState: {_currentUserId}");
+                return;
+            }
+
+            // Fallback: try to get from authentication state
+            Console.WriteLine("[EscalationIndicator] UserProfileState not available, trying AuthenticationStateProvider");
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                    var user = authState.User;
+                    var userId = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                               ?? user?.FindFirst("sub")?.Value
+                               ?? user?.Identity?.Name;
+
+                    if (!string.IsNullOrEmpty(userId))
+                    {
+                        _currentUserId = userId;
+                        Console.WriteLine($"[EscalationIndicator] Got user ID from AuthenticationStateProvider: {_currentUserId}");
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    else
+                    {
+                        Console.WriteLine("[EscalationIndicator] Could not get user ID from any source");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[EscalationIndicator] Error getting user ID from auth state: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationIndicator] Error getting current user from UserProfileState: {ex.Message}");
+        }
+    }
+
+    private async Task InitializeSignalR()
+    {
+        try
+        {
+            // Use the SignalRConnectionService to get the connection
+            await SignalRService.EnsureConnectedAsync();
+            _hubConnection = SignalRService.HubConnection;
+
+            if (_hubConnection != null)
+            {
+                Console.WriteLine("[EscalationIndicator] Setting up SignalR event handlers...");
+
+                // Connection lifecycle logging
+                _hubConnection.Reconnecting += (ex) =>
+                {
+                    Console.WriteLine($"[EscalationIndicator] SignalR reconnecting... {ex?.Message}");
+                    return Task.CompletedTask;
+                };
+                _hubConnection.Reconnected += async (id) =>
+                {
+                    Console.WriteLine($"[EscalationIndicator] SignalR reconnected (ConnectionId={id})");
+                    await JoinAgentGroup();
+                };
+
+                // Subscribe to escalation-specific events
+                _hubConnection.On<string, string, string, int, DateTime>("EscalationPersistentNotification", OnEscalationPersistentNotification);
+                _hubConnection.On<string>("EscalationAccepted", OnEscalationAcceptedSignalR);
+                _hubConnection.On<string, string>("EscalationIgnored", OnEscalationIgnoredSignalR);
+
+                // Join the agent group to receive escalation events
+                await JoinAgentGroup();
+
+                Console.WriteLine("[EscalationIndicator] All SignalR event handlers set up");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationIndicator] SignalR connection error: {ex.Message}");
+        }
+    }
+
+    private async Task JoinAgentGroup()
+    {
+        try
+        {
+            if (_hubConnection?.State == HubConnectionState.Connected)
+            {
+                await _hubConnection.InvokeAsync("JoinAgentGroup");
+                Console.WriteLine("[EscalationIndicator] Joined agent group for escalation notifications");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationIndicator] Failed to join agent group: {ex.Message}");
+        }
+    }
+
+    private async Task LoadPersistentEscalations()
+    {
+        try
+        {
+            Console.WriteLine("[EscalationIndicator] Loading persistent escalations from database...");
+            
+            var query = new GetPendingEscalationsQuery();
+            var result = await Mediator.Send(query);
+            
+            if (result.Succeeded && result.Data != null)
+            {
+                foreach (var escalation in result.Data)
+                {
+                    // Convert database escalation to notification item
+                    var escalationNotification = new EscalationNotificationItem
+                    {
+                        ConversationId = escalation.ConversationReference,
+                        From = "System",
+                        Message = $"Escalation: {escalation.EscalationReason}",
+                        Timestamp = escalation.EscalatedAt,
+                        EscalationData = new EscalationData
+                        {
+                            ConversationId = escalation.ConversationReference,
+                            CustomerName = escalation.CustomerName,
+                            PhoneNumber = escalation.PhoneNumber,
+                            EscalationReason = escalation.EscalationReason,
+                            Priority = escalation.Priority,
+                            EscalatedAt = escalation.EscalatedAt,
+                            IgnoredByAgents = new HashSet<string>()
+                        }
+                    };
+
+                    _escalationNotifications.Add(escalationNotification);
+                }
+
+                _escalationCount = _escalationNotifications.Count;
+                _hasEscalations = _escalationCount > 0;
+
+                if (_hasEscalations)
+                {
+                    StartBlinking();
+                }
+
+                await InvokeAsync(StateHasChanged);
+                Console.WriteLine($"[EscalationIndicator] Loaded {_escalationCount} persistent escalations from database");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationIndicator] Error loading persistent escalations: {ex.Message}");
+        }
+    }
+
+    private async Task OnEscalationPersistentNotification(string conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt)
+    {
+        Console.WriteLine($"[EscalationIndicator] EscalationPersistentNotification: ConversationId={conversationId}, Priority={priority}");
+
+        await InvokeAsync(async () =>
+        {
+            // Check if we already have this escalation
+            var existingEscalation = _escalationNotifications.FirstOrDefault(e => e.ConversationId == conversationId);
+            if (existingEscalation != null)
+            {
+                Console.WriteLine($"[EscalationIndicator] Escalation {conversationId} already exists, skipping duplicate");
+                return;
+            }
+
+            // Create new escalation notification
+            var escalationNotification = new EscalationNotificationItem
+            {
+                ConversationId = conversationId,
+                From = "System",
+                Message = $"Escalation: {reason}",
+                Timestamp = escalatedAt,
+                EscalationData = new EscalationData
+                {
+                    ConversationId = conversationId,
+                    CustomerName = "Customer", // Will be enhanced with real customer data
+                    PhoneNumber = customerPhoneNumber,
+                    EscalationReason = reason,
+                    Priority = priority,
+                    EscalatedAt = escalatedAt,
+                    IgnoredByAgents = new HashSet<string>()
+                }
+            };
+
+            _escalationNotifications.Insert(0, escalationNotification);
+            _escalationCount = _escalationNotifications.Count;
+            _hasEscalations = _escalationCount > 0;
+
+            StartBlinking();
+            await InvokeAsync(StateHasChanged);
+
+            Console.WriteLine($"[EscalationIndicator] Added escalation notification. Count: {_escalationCount}");
+        });
+    }
+
+    private async Task OnEscalationAcceptedSignalR(string conversationId)
+    {
+        Console.WriteLine($"[EscalationIndicator] EscalationAccepted: ConversationId={conversationId}");
+
+        await InvokeAsync(async () =>
+        {
+            // Remove the escalation from our list
+            var escalation = _escalationNotifications.FirstOrDefault(e => e.ConversationId == conversationId);
+            if (escalation != null)
+            {
+                _escalationNotifications.Remove(escalation);
+                _escalationCount = _escalationNotifications.Count;
+                _hasEscalations = _escalationCount > 0;
+
+                if (_escalationCount == 0)
+                {
+                    StopBlinking();
+                }
+
+                await InvokeAsync(StateHasChanged);
+                Console.WriteLine($"[EscalationIndicator] Removed accepted escalation. Remaining count: {_escalationCount}");
+            }
+        });
+    }
+
+    private async Task OnEscalationIgnoredSignalR(string conversationId, string agentId)
+    {
+        Console.WriteLine($"[EscalationIndicator] EscalationIgnored: ConversationId={conversationId}, AgentId={agentId}");
+
+        await InvokeAsync(() =>
+        {
+            // Find the escalation and add this agent to the ignored list
+            var escalation = _escalationNotifications.FirstOrDefault(e => e.ConversationId == conversationId);
+            if (escalation?.EscalationData != null)
+            {
+                escalation.EscalationData.IgnoredByAgents.Add(agentId);
+                Console.WriteLine($"[EscalationIndicator] Agent {agentId} ignored escalation {conversationId}");
+            }
+
+            // The escalation remains in the list and keeps blinking until someone accepts it
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task AcceptEscalation(EscalationNotificationItem escalation)
+    {
+        try
+        {
+            Console.WriteLine($"[EscalationIndicator] Accepting escalation {escalation.ConversationId}");
+
+            var command = new AcceptEscalationCommand { ConversationId = escalation.ConversationId };
+            var result = await Mediator.Send(command);
+
+            if (result.Succeeded)
+            {
+                // Broadcast acceptance to all agents via SignalR
+                if (_hubConnection?.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.InvokeAsync("BroadcastEscalationAccepted", escalation.ConversationId);
+                }
+
+                // Invoke callback
+                if (OnEscalationAccepted.HasDelegate)
+                {
+                    await OnEscalationAccepted.InvokeAsync(escalation.ConversationId);
+                }
+
+                // Navigate to conversation
+                Navigation?.NavigateTo($"/agent/conversations/{escalation.ConversationId}");
+
+                Snackbar.Add("Escalation accepted successfully", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to accept escalation", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationIndicator] Error accepting escalation: {ex.Message}");
+            Snackbar.Add($"Error accepting escalation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task IgnoreEscalation(EscalationNotificationItem escalation)
+    {
+        try
+        {
+            Console.WriteLine($"[EscalationIndicator] Ignoring escalation {escalation.ConversationId}");
+
+            // Broadcast ignore to all agents via SignalR
+            if (_hubConnection?.State == HubConnectionState.Connected)
+            {
+                await _hubConnection.InvokeAsync("BroadcastEscalationIgnored", escalation.ConversationId, _currentUserId);
+            }
+
+            // Invoke callback
+            if (OnEscalationIgnored.HasDelegate)
+            {
+                await OnEscalationIgnored.InvokeAsync(escalation.ConversationId);
+            }
+
+            Console.WriteLine($"[EscalationIndicator] Ignored escalation {escalation.ConversationId} - notification persists for other agents");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationIndicator] Error ignoring escalation: {ex.Message}");
+        }
+    }
+
+    private void StartBlinking()
+    {
+        if (_blinkTimer != null)
+        {
+            _blinkTimer.Dispose();
+        }
+
+        _hasEscalations = true;
+        _isBlinking = true;
+
+        _blinkTimer = new Timer(async _ =>
+        {
+            _isBlinking = !_isBlinking;
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(800));
+    }
+
+    private void StopBlinking()
+    {
+        _hasEscalations = false;
+        _isBlinking = false;
+        _blinkTimer?.Dispose();
+        _blinkTimer = null;
+    }
+
+    private string GetBadgeClass()
+    {
+        var baseClass = "escalation-badge";
+        if (_hasEscalations && _isBlinking)
+        {
+            baseClass += " escalation-blink";
+        }
+        return baseClass;
+    }
+
+    private string GetEscalationIcon()
+    {
+        if (_escalationCount == 0)
+            return Icons.Material.Filled.SupportAgent;
+        return _hasEscalations ? Icons.Material.Filled.PriorityHigh : Icons.Material.Filled.SupportAgent;
+    }
+
+    private Color GetIconColor()
+    {
+        if (_escalationCount == 0)
+            return Color.Default;
+        return _hasEscalations ? Color.Error : Color.Warning;
+    }
+
+    private string GetTooltipText()
+    {
+        if (_escalationCount == 0)
+            return "No pending escalations";
+        var escalations = _escalationCount == 1 ? "escalation" : "escalations";
+        return $"{_escalationCount} pending {escalations}";
+    }
+
+    private string GetEscalationTitle(EscalationNotificationItem escalation)
+    {
+        if (escalation.ConversationId.Length > 10)
+            return $"Chat {escalation.ConversationId.Substring(0, 8)}...";
+        return $"Conversation {escalation.ConversationId}";
+    }
+
+    private Color GetPriorityColor(int priority) => priority switch
+    {
+        3 => Color.Error,
+        2 => Color.Warning,
+        _ => Color.Info
+    };
+
+    private string GetPriorityIcon(int priority) => priority switch
+    {
+        3 => Icons.Material.Filled.ErrorOutline,
+        2 => Icons.Material.Filled.Warning,
+        _ => Icons.Material.Filled.Info
+    };
+
+    private string GetPriorityText(int priority) => priority switch
+    {
+        3 => "CRITICAL",
+        2 => "HIGH",
+        _ => "STANDARD"
+    };
+
+    private string GetTimeAgo(DateTime timestamp)
+    {
+        var timeSpan = DateTime.Now - timestamp;
+        
+        if (timeSpan.TotalMinutes < 1)
+            return "now";
+        if (timeSpan.TotalMinutes < 60)
+            return $"{(int)timeSpan.TotalMinutes}m";
+        if (timeSpan.TotalHours < 24)
+            return $"{(int)timeSpan.TotalHours}h";
+        if (timeSpan.TotalDays < 7)
+            return $"{(int)timeSpan.TotalDays}d";
+        
+        return timestamp.ToString("MM/dd");
+    }
+
+    private string GetTruncatedReason(string reason)
+    {
+        if (string.IsNullOrEmpty(reason))
+            return "Escalation requested";
+        
+        const int maxLength = 60;
+        if (reason.Length <= maxLength)
+            return reason;
+        
+        return reason.Substring(0, maxLength - 3) + "...";
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _blinkTimer?.Dispose();
+
+        var connection = SignalRService.HubConnection;
+        if (connection != null)
+        {
+            connection.Remove("EscalationPersistentNotification");
+            connection.Remove("EscalationAccepted");
+            connection.Remove("EscalationIgnored");
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}
+
+<style>
+    .escalation-badge {
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    .escalation-blink {
+        animation: escalation-blink 0.8s infinite;
+    }
+
+    @@keyframes escalation-blink {
+        0%, 50% {
+            opacity: 1;
+        }
+
+        51%, 100% {
+            opacity: 0.3;
+        }
+    }
+
+    .escalation-item:hover {
+        background-color: var(--mud-palette-action-hover) !important;
+    }
+
+    .escalation-item {
+        cursor: pointer;
+        border-bottom: 1px solid var(--mud-palette-divider);
+    }
+
+        .escalation-item:last-child {
+            border-bottom: none;
+        }
+
+    .escalation-item {
+        min-height: 100px;
+    }
+
+        .escalation-item .mud-text-primary {
+            font-weight: 600;
+        }
+
+        .escalation-item .mud-chip {
+            min-width: 24px;
+            height: 20px;
+        }
+
+    .escalation-actions .accept-button {
+        min-width: 70px;
+    }
+
+    .escalation-actions .ignore-button {
+        min-width: 70px;
+    }
+
+    .escalation-menu {
+        z-index: 10000;
+    }
+
+    .escalation-empty-state {
+        min-width: 250px;
+    }
+
+    .priority-badge {
+        font-size: 0.7rem !important;
+        height: 18px !important;
+    }
+</style>

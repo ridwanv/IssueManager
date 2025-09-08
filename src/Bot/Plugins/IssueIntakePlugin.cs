@@ -130,7 +130,7 @@ public class IssueIntakePlugin
                 return $"There was a problem creating your issue: {result.ErrorMessage}. Please try again or contact support directly.";
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return "There was a problem processing your issue. Please try again or contact support directly.";
         }

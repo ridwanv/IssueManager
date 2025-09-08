@@ -11,59 +11,107 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-<MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+<MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" MaxHeight="500" Class="notification-menu">
     <ActivatorContent>
-        <MudBadge Content="@_notificationCount"
-                  Color="Color.Error"
-                  Overlap="true"
-                  Visible="@(_notificationCount > 0)"
-                  Class="@GetBadgeClass()">
-            <MudIconButton Icon="@Icons.Material.Filled.Message"
-                           Color="Color.Inherit"
-                           Size="Size.Medium" />
-        </MudBadge>
+        <MudTooltip Text="@GetTooltipText()" Arrow="true">
+            <MudBadge Content="@_notificationCount"
+                      Color="Color.Error"
+                      Overlap="true"
+                      Visible="@(_notificationCount > 0)"
+                      Class="@GetBadgeClass()">
+                <MudIconButton Icon="@GetNotificationIcon()"
+                               Color="@GetIconColor()"
+                               Size="Size.Medium" 
+                               Class="notification-icon-button" />
+            </MudBadge>
+        </MudTooltip>
     </ActivatorContent>
     <ChildContent>
         @if (GetGroupedNotifications().Count == 0)
         {
-            <MudMenuItem>
-                <MudText Typo="Typo.body2" Class="pa-2">No new conversations</MudText>
-            </MudMenuItem>
+            <div class="notification-empty-state pa-4 text-center">
+                <MudIcon Icon="@Icons.Material.Filled.NotificationsNone" Size="Size.Large" Class="mb-2 mud-text-secondary" />
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">No new conversations</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-disabled">You're all caught up!</MudText>
+            </div>
         }
         else
         {
-            <MudMenuItem OnClick="MarkAllAsRead">
-                <MudText Typo="Typo.caption" Class="pa-1">Mark all as read</MudText>
-            </MudMenuItem>
-            <MudDivider />
-            @foreach (var conversation in GetGroupedNotifications().Take(10))
-            {
-                <MudMenuItem OnClick="@(() => HandleConversationClick(conversation))" Class="notification-item conversation-item">
-                    <div class="d-flex flex-column pa-2" style="max-width: 320px;">
-                        <div class="d-flex justify-space-between align-center mb-1">
-                            <MudText Typo="Typo.subtitle2" Class="mud-text-primary">
-                                Conversation @conversation.ConversationId
-                            </MudText>
-                            @if (conversation.UnreadCount > 1)
-                            {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Error" Text="@conversation.UnreadCount.ToString()" />
-                            }
-                        </div>
-                        <MudText Typo="Typo.caption" Class="mud-text-secondary mb-1">
-                            @conversation.LatestFrom - @conversation.LatestTimestamp.ToString("HH:mm")
-                        </MudText>
-                        <MudText Typo="Typo.body2" Class="text-truncate">
-                            @conversation.LatestMessage
+            <div class="notification-header pa-2">
+                <div class="d-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Small" Class="mud-text-primary" />
+                        <MudText Typo="Typo.subtitle2" Class="mud-text-primary">
+                            @GetGroupedNotifications().Count Active Conversations
                         </MudText>
                     </div>
-                </MudMenuItem>
-            }
+                    <MudButton Variant="Variant.Text" 
+                               Size="Size.Small" 
+                               StartIcon="@Icons.Material.Filled.DoneAll"
+                               OnClick="MarkAllAsRead"
+                               Class="notification-clear-button">
+                        Clear All
+                    </MudButton>
+                </div>
+            </div>
+            <MudDivider Class="ma-0" />
+            <div class="notification-list">
+                @foreach (var conversation in GetGroupedNotifications().Take(10))
+                {
+                    <MudMenuItem OnClick="@(() => HandleConversationClick(conversation))" Class="notification-item conversation-item pa-0">
+                        <div class="d-flex align-start pa-3 gap-3" style="width: 100%; max-width: 380px;">
+                            <div class="conversation-avatar">
+                                <MudAvatar Size="Size.Medium" Color="@GetConversationAvatarColor(conversation)">
+                                    <MudIcon Icon="@GetConversationIcon(conversation)" Size="Size.Small" />
+                                </MudAvatar>
+                            </div>
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="d-flex justify-space-between align-center mb-1">
+                                    <MudText Typo="Typo.subtitle2" Class="mud-text-primary conversation-title">
+                                        @GetConversationTitle(conversation)
+                                    </MudText>
+                                    <div class="d-flex align-center gap-1">
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary timestamp">
+                                            @GetTimeAgo(conversation.LatestTimestamp)
+                                        </MudText>
+                                        @if (conversation.UnreadCount > 1)
+                                        {
+                                            <MudChip T="string" 
+                                                     Size="Size.Small" 
+                                                     Color="Color.Error" 
+                                                     Text="@conversation.UnreadCount.ToString()"
+                                                     Class="unread-badge" />
+                                        }
+                                    </div>
+                                </div>
+                                <div class="d-flex align-center gap-1 mb-1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="sender-icon" />
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary sender-name">
+                                        @conversation.LatestFrom
+                                    </MudText>
+                                </div>
+                                <MudText Typo="Typo.body2" Class="conversation-message">
+                                    @GetTruncatedMessage(conversation.LatestMessage)
+                                </MudText>
+                            </div>
+                            <div class="conversation-actions">
+                                <MudIcon Icon="@Icons.Material.Filled.ChevronRight" 
+                                         Size="Size.Small" 
+                                         Class="action-arrow mud-text-disabled" />
+                            </div>
+                        </div>
+                    </MudMenuItem>
+                }
+            </div>
             @if (GetGroupedNotifications().Count > 10)
             {
-                <MudDivider />
-                <MudMenuItem>
-                    <MudText Typo="Typo.caption" Class="pa-1">+@(GetGroupedNotifications().Count - 10) more conversations...</MudText>
-                </MudMenuItem>
+                <MudDivider Class="ma-0" />
+                <div class="notification-footer pa-2 text-center">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" Class="mr-1" />
+                        +@(GetGroupedNotifications().Count - 10) more conversations
+                    </MudText>
+                </div>
             }
         }
     </ChildContent>
@@ -720,6 +768,81 @@
             .Where(n => !n.IsRead && !n.IsFromAgent) // Only count unread user messages
             .GroupBy(n => n.ConversationId)
             .Count();
+    }
+
+    private string GetNotificationIcon()
+    {
+        if (_notificationCount == 0)
+            return Icons.Material.Filled.Notifications;
+        return _hasUnacknowledged ? Icons.Material.Filled.NotificationImportant : Icons.Material.Filled.Notifications;
+    }
+
+    private Color GetIconColor()
+    {
+        if (_notificationCount == 0)
+            return Color.Default;
+        return _hasUnacknowledged ? Color.Warning : Color.Primary;
+    }
+
+    private string GetTooltipText()
+    {
+        if (_notificationCount == 0)
+            return "No new notifications";
+        var conversations = _notificationCount == 1 ? "conversation" : "conversations";
+        return $"{_notificationCount} active {conversations}";
+    }
+
+    private string GetConversationTitle(ConversationNotification conversation)
+    {
+        if (conversation.ConversationId.Length > 10)
+            return $"Chat {conversation.ConversationId.Substring(0, 8)}...";
+        return $"Conversation {conversation.ConversationId}";
+    }
+
+    private string GetConversationIcon(ConversationNotification conversation)
+    {
+        if (conversation.UnreadCount > 5)
+            return Icons.Material.Filled.PriorityHigh;
+        if (conversation.UnreadCount > 1)
+            return Icons.Material.Filled.Chat;
+        return Icons.Material.Filled.ChatBubbleOutline;
+    }
+
+    private Color GetConversationAvatarColor(ConversationNotification conversation)
+    {
+        if (conversation.UnreadCount > 5)
+            return Color.Error;
+        if (conversation.UnreadCount > 1)
+            return Color.Warning;
+        return Color.Primary;
+    }
+
+    private string GetTimeAgo(DateTime timestamp)
+    {
+        var timeSpan = DateTime.Now - timestamp;
+        
+        if (timeSpan.TotalMinutes < 1)
+            return "now";
+        if (timeSpan.TotalMinutes < 60)
+            return $"{(int)timeSpan.TotalMinutes}m";
+        if (timeSpan.TotalHours < 24)
+            return $"{(int)timeSpan.TotalHours}h";
+        if (timeSpan.TotalDays < 7)
+            return $"{(int)timeSpan.TotalDays}d";
+        
+        return timestamp.ToString("MM/dd");
+    }
+
+    private string GetTruncatedMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return "No message preview";
+        
+        const int maxLength = 60;
+        if (message.Length <= maxLength)
+            return message;
+        
+        return message.Substring(0, maxLength - 3) + "...";
     }
 
     public ValueTask DisposeAsync()

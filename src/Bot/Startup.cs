@@ -142,7 +142,7 @@ namespace IssueManager.Bot
                 
                 services.AddHttpClient();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 throw;
             }
