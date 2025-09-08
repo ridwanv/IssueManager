@@ -146,7 +146,8 @@ public partial class IssueConversationTabComponent : ComponentBase, IAsyncDispos
             try
             {
                 // Leave SignalR groups
-                await _hubConnection.InvokeAsync("LeaveConversationGroup", ConversationId.ToString());
+                // Intentionally NOT leaving conversation group to allow global notifications
+                // await _hubConnection.InvokeAsync("LeaveConversationGroup", ConversationId.ToString());
                 await _hubConnection.InvokeAsync("LeaveIssueConversationGroup", IssueId, ConversationId.ToString());
                 
                 // Unsubscribe from events

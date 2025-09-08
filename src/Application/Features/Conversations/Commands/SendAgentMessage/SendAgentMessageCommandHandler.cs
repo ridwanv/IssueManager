@@ -1,5 +1,6 @@
 ﻿using CleanArchitecture.Blazor.Application.Common.Interfaces;
 using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity;
+using CleanArchitecture.Blazor.Application.Common.Models;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -83,22 +84,26 @@ public class SendAgentMessageCommandHandler : IRequestHandler<SendAgentMessageCo
         
         await db.SaveChangesAsync(cancellationToken);
 
-        // Send message via WhatsApp through Bot service
-        var customerParticipant = conversation.Participants
-            .FirstOrDefault(p => p.Type == ParticipantType.Customer);
-            
-        if (customerParticipant != null && !string.IsNullOrEmpty(customerParticipant.WhatsAppPhoneNumber))
+        // Send agent message via Bot Controller (Bot as Proxy pattern)
+        if (!string.IsNullOrEmpty(conversation.ConversationReference))
         {
             try
             {
-                await SendMessageToBotService(conversation.Id, customerParticipant.WhatsAppPhoneNumber, 
-                    request.Content, agent.ApplicationUser.DisplayName ?? "Agent");
+                await SendAgentMessageToBotController(
+                    conversation.ConversationReference, // still pass as ConversationId for legacy
+                    request.Content,
+                    currentUserId,
+                    agent.ApplicationUser.DisplayName ?? agent.ApplicationUser.UserName ?? "Agent",
+                    conversation.TenantId,
+                    conversation.ConversationReference, // pass full reference as JSON string
+                    null, // ServiceUrl will be extracted in BotController
+                    cancellationToken);
             }
             catch (Exception ex)
             {
                 // Log error but don't fail the entire operation
                 // The message is already saved in the database
-                Console.WriteLine($"Failed to send WhatsApp message: {ex.Message}");
+                Console.WriteLine($"Failed to send agent message via Bot Controller: {ex.Message}");
             }
         }
 
@@ -112,31 +117,76 @@ public class SendAgentMessageCommandHandler : IRequestHandler<SendAgentMessageCo
         return await Result<Unit>.SuccessAsync(Unit.Value);
     }
 
-    private async Task SendMessageToBotService(int conversationId, string phoneNumber, string message, string agentName)
+    private async Task SendAgentMessageToBotController(
+        string conversationId, 
+        string content, 
+        string agentId, 
+        string agentName, 
+        string tenantId, 
+        string? conversationReference, // full JSON string
+        string? serviceUrl, // not used here
+        CancellationToken cancellationToken)
     {
         using var httpClient = _httpClientFactory.CreateClient();
+        
+        // Retrieve the ConversationChannelData from the Conversation entity
+        string? storedConversationReference = null;
+        string? storedServiceUrl = null;
+        
+        try
+        {
+            await using var db = await _dbContextFactory.CreateAsync(cancellationToken);
+            
+            // Get the conversation and its ConversationChannelData
+            var conversation = await db.Conversations
+                .Where(c => c.ConversationReference == conversationId)
+                .FirstOrDefaultAsync(cancellationToken);
+                
+            if (conversation != null && !string.IsNullOrEmpty(conversation.ConversationChannelData))
+            {
+                storedConversationReference = conversation.ConversationChannelData;
+                
+                // Try to extract ServiceUrl from the stored ConversationReference
+                try
+                {
+                    using var jsonDoc = JsonDocument.Parse(storedConversationReference);
+                    if (jsonDoc.RootElement.TryGetProperty("ServiceUrl", out var serviceUrlElement))
+                    {
+                        storedServiceUrl = serviceUrlElement.GetString();
+                    }
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to retrieve stored ConversationChannelData: {ex.Message}");
+        }
         
         var request = new
         {
             ConversationId = conversationId,
-            PhoneNumber = phoneNumber,
-            Message = message,
-            AgentName = agentName
+            Content = content,
+            AgentId = agentId,
+            AgentName = agentName,
+            TenantId = tenantId,
+            Timestamp = DateTime.UtcNow,
+            ConversationReference = storedConversationReference ?? conversationReference,
+            ServiceUrl = storedServiceUrl ?? serviceUrl
         };
 
         var json = JsonSerializer.Serialize(request);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
 
-        // This should point to the Bot service endpoint
-        // In production, this URL should come from configuration
-        var botServiceUrl = "http://localhost:5000/api/agent-message"; // TODO: Move to config
+        // Send to Bot Controller's agent activity endpoint
+        var botServiceUrl = "http://localhost:3978/api/agent-activity";
         
-        var response = await httpClient.PostAsync(botServiceUrl, content);
+        var response = await httpClient.PostAsync(botServiceUrl, httpContent, cancellationToken);
         
         if (!response.IsSuccessStatusCode)
         {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            throw new Exception($"Bot service returned error: {response.StatusCode} - {errorContent}");
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new Exception($"Bot Controller returned error: {response.StatusCode} - {errorContent}");
         }
     }
 }

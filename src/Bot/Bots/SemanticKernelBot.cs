@@ -57,6 +57,64 @@ namespace IssueManager.Bot.Bots
                         new() { Role = "system", Message = _instructions }
                     }
                 });
+
+            // Check for agent session timeouts and handback grace periods
+            CheckAgentSessionTimeout(conversationData);
+
+            // Check if this is an agent message FIRST (before checking ShouldBotRespond)
+            if (IsAgentMessage(turnContext))
+            {
+                // Start agent session if not already active
+                if (!conversationData.IsAgentActivelyHandling)
+                {
+                    var agentId = turnContext.Activity.From?.Id ?? "unknown-agent";
+                    var agentName = turnContext.Activity.From?.Name ?? "Agent";
+                    
+                    // Remove "agent:" prefix if present
+                    if (agentId.StartsWith("agent:"))
+                    {
+                        agentId = agentId.Substring(6);
+                    }
+                    
+                    conversationData.StartAgentSession(agentId, agentName);
+                    Console.WriteLine($"Started agent session for {agentName} (ID: {agentId})");
+                }
+                else
+                {
+                    conversationData.UpdateAgentActivity();
+                    Console.WriteLine($"Updated agent activity for existing session");
+                }
+                
+                await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+                
+                // Handle as agent message activity
+                return await HandleAgentMessageActivity(turnContext, conversationData, cancellationToken);
+            }
+
+            // Early exit check: Don't process if agent is actively handling
+            if (!conversationData.ShouldBotRespond())
+            {
+                // Route user message to the active agent
+                return await RouteUserMessageToAgent(turnContext, conversationData, cancellationToken);
+            }
+
+            // Check if this is an agent message activity (Bot as Proxy pattern)
+            if (turnContext.Activity.Type == "agentMessage")
+            {
+                return await HandleAgentMessageActivity(turnContext, conversationData, cancellationToken);
+            }
+
+            // Handle handoff status activities
+            if (turnContext.Activity.Type == "handoffStatus")
+            {
+                return await HandleHandoffStatusActivity(turnContext, conversationData, cancellationToken);
+            }
+
+            // Handle agent presence activities
+            if (turnContext.Activity.Type == "agentPresence")
+            {
+                return await HandleAgentPresenceActivity(turnContext, conversationData, cancellationToken);
+            }
                 
             // Handle Bot Framework handoff events
             if (turnContext.Activity.Type == ActivityTypes.Event)
@@ -97,6 +155,10 @@ namespace IssueManager.Bot.Bots
                     "User requested human assistance", 
                     "User expressed need for human support");
                 await turnContext.SendActivityAsync(handoffEvent, cancellationToken);
+                
+                // Prepare for agent session (will be started when agent connects)
+                conversationData.IsHandoffPending = true;
+                conversationData.HandoffInitiatedAt = DateTime.UtcNow;
                 
                 await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
                 
@@ -182,16 +244,164 @@ namespace IssueManager.Bot.Bots
             return true;
         }
 
+
         /// <summary>
-        /// Stores a conversation message in the database via the API
+        /// Handles agent message activities for Bot as Proxy pattern
         /// </summary>
-        /// <param name="turnContext">The turn context</param>
-        /// <param name="role">The message role (user, assistant, system)</param>
-        /// <param name="content">The message content</param>
-        /// <param name="toolCallId">Optional tool call ID</param>
-        /// <param name="toolCalls">Optional tool calls data</param>
-        /// <param name="imageType">Optional image MIME type</param>
-        /// <param name="imageData">Optional base64 image data</param>
+        private async Task<bool> HandleAgentMessageActivity(ITurnContext<IMessageActivity> turnContext, ConversationData conversationData, CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Get agent information from activity From field and Text content
+                var agentName = turnContext.Activity.From?.Name ?? "Agent";
+                var agentId = turnContext.Activity.From?.Id ?? "unknown-agent";
+                var agentMessage = turnContext.Activity.Text;
+
+                // Remove "agent:" prefix if present in agent ID
+                if (agentId.StartsWith("agent:"))
+                {
+                    agentId = agentId.Substring(6);
+                }
+
+                if (string.IsNullOrEmpty(agentMessage))
+                {
+                    Console.WriteLine("Agent message activity missing text content");
+                    return false;
+                }
+
+                Console.WriteLine($"Processing agent message from {agentName} (ID: {agentId}): {agentMessage}");
+
+                // Bot acts as proxy - format and route agent message to customer
+                var formattedMessage = $"**{agentName}**: {agentMessage}";
+                
+                try
+                {
+                    await turnContext.SendActivityAsync(MessageFactory.Text(formattedMessage), cancellationToken);
+                    Console.WriteLine($"Agent message sent successfully via Bot Framework");
+                }
+                catch (Exception sendEx)
+                {
+                    Console.WriteLine($"Failed to send agent message via Bot Framework: {sendEx.Message}");
+                    // Continue with storing the message even if sending fails
+                }
+
+                // Store agent message in database
+                await StoreMessageInDatabase(turnContext, "agent", agentMessage, agentName: agentName);
+
+                // Add to conversation history for context preservation
+                conversationData.AddTurn("assistant", formattedMessage);
+
+                // Update conversation state to track agent handoff
+                conversationData.IsEscalated = true;
+                conversationData.AgentName = agentName;
+
+                // Save conversation state
+                await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+
+                Console.WriteLine($"Agent message processed successfully from {agentName}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling agent message activity: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Handles handoff status activities
+        /// </summary>
+        private async Task<bool> HandleHandoffStatusActivity(ITurnContext<IMessageActivity> turnContext, ConversationData conversationData, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var activityValue = turnContext.Activity.Value;
+                var statusMessage = turnContext.Activity.Text ?? "Handoff status updated";
+                var agentName = turnContext.Activity.From?.Name ?? "Agent";
+                var agentId = turnContext.Activity.From?.Id ?? "unknown-agent";
+
+                // Update conversation handoff state
+                if (activityValue != null && activityValue.ToString()?.Contains("connected") == true)
+                {
+                    conversationData.IsEscalated = true;
+                    conversationData.AgentName = agentName;
+                    
+                    // Start agent session
+                    conversationData.StartAgentSession(agentId, agentName);
+                    Console.WriteLine($"Agent {agentName} connected - started session");
+                }
+                else if (activityValue != null && activityValue.ToString()?.Contains("completed") == true)
+                {
+                    conversationData.IsEscalated = false;
+                    conversationData.AgentName = null;
+                    
+                    // End agent session
+                    conversationData.EndAgentSession("Handoff completed");
+                    Console.WriteLine($"Agent {agentName} disconnected - ended session");
+                }
+                else if (activityValue != null && activityValue.ToString()?.Contains("handback") == true)
+                {
+                    // Agent requesting handback to bot
+                    conversationData.RequestHandback("Agent requested handback");
+                    Console.WriteLine($"Agent {agentName} requested handback");
+                }
+
+                // Store handoff status message
+                await StoreMessageInDatabase(turnContext, "system", statusMessage);
+
+                // Save conversation state
+                await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+
+                Console.WriteLine($"Handoff status activity processed: {statusMessage}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling handoff status activity: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Handles agent presence activities (typing indicators)
+        /// </summary>
+        private async Task<bool> HandleAgentPresenceActivity(ITurnContext<IMessageActivity> turnContext, ConversationData conversationData, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var agentName = turnContext.Activity.From?.Name ?? "Agent";
+                var isTyping = turnContext.Activity.Value?.ToString()?.Contains("IsTyping\":true") == true;
+
+                // Update agent activity if we have an active session
+                if (conversationData.IsAgentActivelyHandling)
+                {
+                    conversationData.UpdateAgentActivity();
+                }
+
+                // Send typing indicator to customer if agent is typing
+                if (isTyping)
+                {
+                    await turnContext.SendActivitiesAsync(new[] { 
+                        new Activity { Type = ActivityTypes.Typing } 
+                    }, cancellationToken);
+                }
+
+                // Save conversation state to persist activity update
+                await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+
+                Console.WriteLine($"Agent presence activity processed: {agentName} {(isTyping ? "started" : "stopped")} typing");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling agent presence activity: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Enhanced StoreMessageInDatabase method to support agent name parameter
+        /// </summary>
         private async Task StoreMessageInDatabase(
             ITurnContext turnContext, 
             string role, 
@@ -199,10 +409,24 @@ namespace IssueManager.Bot.Bots
             string? toolCallId = null, 
             string? toolCalls = null,
             string? imageType = null,
-            string? imageData = null)
+            string? imageData = null,
+            string? agentName = null)
         {
             try
             {
+                // Capture full ConversationReference for Bot Framework routing
+                string? conversationChannelData = null;
+                try
+                {
+                    var conversationReference = turnContext.Activity.GetConversationReference();
+                    conversationChannelData = JsonSerializer.Serialize(conversationReference);
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail the entire operation
+                    Console.WriteLine($"Failed to serialize ConversationReference: {ex.Message}");
+                }
+
                 var message = new ConversationMessageCreateDto
                 {
                     BotFrameworkConversationId = turnContext.Activity.Conversation.Id,
@@ -214,8 +438,9 @@ namespace IssueManager.Bot.Bots
                     ImageData = imageData,
                     Timestamp = DateTime.UtcNow,
                     UserId = turnContext.Activity.From?.Id,
-                    UserName = turnContext.Activity.From?.Name,
-                    ChannelId = turnContext.Activity.ChannelId
+                    UserName = agentName ?? turnContext.Activity.From?.Name,
+                    ChannelId = turnContext.Activity.ChannelId,
+                    ConversationChannelData = conversationChannelData // Include for conversation creation/update
                 };
 
                 var result = await _apiClient.AddConversationMessageAsync(message);
@@ -230,6 +455,145 @@ namespace IssueManager.Bot.Bots
             {
                 // Log error but don't stop the conversation
                 Console.WriteLine($"Exception storing message in database: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Helper method to determine if a message is from an agent
+        /// </summary>
+        private bool IsAgentMessage(ITurnContext turnContext)
+        {
+            // Check if activity type indicates agent message
+            if (turnContext.Activity.Type == "agentMessage" || 
+                turnContext.Activity.Type == "agentPresence")
+            {
+                return true;
+            }
+
+            // Check if the From field indicates this is an agent message (prefixed with "agent:")
+            if (!string.IsNullOrEmpty(turnContext.Activity.From?.Id))
+            {
+                var fromId = turnContext.Activity.From.Id;
+                
+                if (fromId.StartsWith("agent:"))
+                {
+                    return true;
+                }
+            }
+
+            // Check if message has agent identifier in the activity properties
+            if (turnContext.Activity.Properties?.ContainsKey("isAgentMessage") == true)
+            {
+                var agentMessageValue = turnContext.Activity.Properties["isAgentMessage"];
+                return agentMessageValue != null && agentMessageValue.ToString() == "true";
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check and handle agent session timeouts
+        /// </summary>
+        private void CheckAgentSessionTimeout(ConversationData conversationData)
+        {
+            if (conversationData.IsAgentSessionTimedOut())
+            {
+                Console.WriteLine($"Agent session timed out for {conversationData.AgentName}");
+                conversationData.EndAgentSession("Agent session timeout");
+            }
+            
+            // Also check handback grace period
+            if (conversationData.IsInHandbackGracePeriod())
+            {
+                // Grace period is still active, keep suppressing bot responses
+                Console.WriteLine($"Still in handback grace period for {conversationData.AgentName}");
+            }
+            else if (conversationData.AgentRequestedHandback)
+            {
+                // Grace period expired, complete the handback
+                Console.WriteLine($"Handback grace period expired, completing handback for {conversationData.AgentName}");
+                conversationData.EndAgentSession("Handback grace period completed");
+            }
+        }
+
+        /// <summary>
+        /// Routes user messages to the active agent during agent handoff
+        /// </summary>
+        private async Task<bool> RouteUserMessageToAgent(ITurnContext<IMessageActivity> turnContext, ConversationData conversationData, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var userMessage = turnContext.Activity.Text;
+                var userId = turnContext.Activity.From?.Id;
+                var userName = turnContext.Activity.From?.Name;
+
+                if (string.IsNullOrEmpty(userMessage))
+                {
+                    Console.WriteLine("User message is empty, not routing to agent");
+                    return true;
+                }
+
+                Console.WriteLine($"Routing user message to agent {conversationData.AgentName}: {userMessage}");
+
+                // Store user message in database with proper context
+                await StoreMessageInDatabase(turnContext, "user", userMessage);
+
+                // Update agent activity to extend session timeout
+                conversationData.UpdateAgentActivity();
+
+                // Here you would implement the actual routing to the agent
+                // This could be via:
+                // 1. Webhook to agent dashboard
+                // 2. SignalR notification
+                // 3. Database queue that agents poll
+                // 4. Direct API call to agent service
+                
+                // For now, we'll use a placeholder approach
+                await NotifyAgentOfUserMessage(turnContext, conversationData, userMessage, cancellationToken);
+
+                // Save conversation state
+                await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+
+                Console.WriteLine($"User message successfully routed to agent {conversationData.AgentName}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error routing user message to agent: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Notifies the agent of a new user message via the appropriate channel
+        /// </summary>
+        private async Task NotifyAgentOfUserMessage(ITurnContext<IMessageActivity> turnContext, ConversationData conversationData, string userMessage, CancellationToken cancellationToken)
+        {
+            try
+            {
+                Console.WriteLine($"Notifying agent {conversationData.CurrentAgentId} of user message via API");
+
+                var result = await _apiClient.NotifyAgentOfUserMessageAsync(
+                    turnContext.Activity.Conversation.Id,
+                    conversationData.CurrentAgentId!,
+                    userMessage,
+                    turnContext.Activity.From?.Id,
+                    turnContext.Activity.From?.Name,
+                    turnContext.Activity.ChannelId,
+                    NotificationUrgency.Normal);
+
+                if (result.Succeeded)
+                {
+                    Console.WriteLine($"Agent {conversationData.CurrentAgentId} successfully notified of user message");
+                }
+                else
+                {
+                    Console.WriteLine($"Failed to notify agent {conversationData.CurrentAgentId}: {result.ErrorMessage}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error notifying agent {conversationData.CurrentAgentId} of user message: {ex.Message}");
             }
         }
     }

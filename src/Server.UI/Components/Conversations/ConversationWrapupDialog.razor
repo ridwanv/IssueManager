@@ -1,0 +1,165 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation
+@using CleanArchitecture.Blazor.Domain.Enums
+@using MudBlazor
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["Complete Conversation"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="form" Model="@model">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        @L["Please provide resolution details and select how this conversation was resolved."]
+                    </MudText>
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudSelect @bind-Value="model.Category" 
+                              Label="@L["Resolution Category"]" 
+                              Required="true"
+                              For="@(() => model.Category)"
+                              Variant="Variant.Outlined"
+                              Class="mb-4">
+                        @foreach (ResolutionCategory category in Enum.GetValues<ResolutionCategory>())
+                        {
+                            <MudSelectItem Value="category">@GetCategoryDisplayName(category)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="model.ResolutionNotes"
+                                 Label="@L["Resolution Notes"]"
+                                 Multiline="true" 
+                                 Rows="6"
+                                 Required="true"
+                                 Counter="2000"
+                                 MaxLength="2000"
+                                 For="@(() => model.ResolutionNotes)"
+                                 HelperText="@L["Minimum 20 characters required"]" 
+                                 Variant="Variant.Outlined"
+                                 Class="mb-4" />
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudCheckBox T="bool" @bind-Checked="model.NotifyCustomer" 
+                                Label="@L["Send resolution notification to customer via WhatsApp"]" 
+                                Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">
+            @L["Cancel"]
+        </MudButton>
+        <MudButton Color="Color.Primary" 
+                  OnClick="Submit"
+                  Disabled="@_processing"
+                  Variant="Variant.Filled">
+            @if (_processing)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <MudText>@L["Completing..."]</MudText>
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="mr-2" />
+                <MudText>@L["Complete Conversation"]</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public string ConversationId { get; set; } = default!;
+
+    private MudForm form = default!;
+    private bool _processing = false;
+    private WrapupModel model = new();
+    private CompleteConversationCommandValidator validator = new();
+
+    public class WrapupModel
+    {
+        public ResolutionCategory Category { get; set; } = ResolutionCategory.Resolved;
+        public string ResolutionNotes { get; set; } = "";
+        public bool NotifyCustomer { get; set; } = true;
+    }
+    
+    private bool ValidateResolutionNotes(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && value.Length >= 20 && value.Length <= 2000;
+    }
+
+    protected override void OnInitialized()
+    {
+        // Model already initialized
+    }
+
+    private async Task Submit()
+    {
+        // Manual validation since we're not using FluentValidation binding
+        if (string.IsNullOrWhiteSpace(model.ResolutionNotes) || 
+            model.ResolutionNotes.Length < 20 || 
+            model.ResolutionNotes.Length > 2000)
+        {
+            Snackbar.Add(L["Please provide resolution notes between 20 and 2000 characters"], Severity.Error);
+            return;
+        }
+
+        _processing = true;
+        try
+        {
+            var command = new CompleteConversationCommand(
+                ConversationId, 
+                model.Category, 
+                model.ResolutionNotes, 
+                model.NotifyCustomer);
+                
+            var result = await Mediator.Send(command);
+            if (result.Succeeded)
+            {
+                Snackbar.Add(L["Conversation completed successfully"], Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                var errorMessage = string.Join(", ", result.Errors ?? new[] { "Unknown error" });
+                Snackbar.Add($"{L["Failed to complete conversation"]}: {errorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Error completing conversation"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private string GetCategoryDisplayName(ResolutionCategory category)
+    {
+        return category switch
+        {
+            ResolutionCategory.Resolved => L["Resolved"],
+            ResolutionCategory.EscalatedToTechnicalTeam => L["Escalated to Technical Team"],
+            ResolutionCategory.InformationProvided => L["Information Provided"],
+            ResolutionCategory.CustomerNoResponse => L["Customer No Response"],
+            ResolutionCategory.DuplicateIssue => L["Duplicate Issue"],
+            ResolutionCategory.CannotReproduce => L["Cannot Reproduce"],
+            _ => category.ToString()
+        };
+    }
+}

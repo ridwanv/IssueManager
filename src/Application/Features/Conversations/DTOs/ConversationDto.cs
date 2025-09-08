@@ -22,6 +22,10 @@ public record ConversationDto
     public DateTime? CompletedAt { get; set; }
     public string? EscalationReason { get; set; }
     public string? ConversationSummary { get; set; }
+    public ResolutionCategory? ResolutionCategory { get; set; }
+    public string? ResolutionNotes { get; set; }
+    public string? ResolvedByAgentId { get; set; }
+    public string? ResolvedByAgentName { get; set; }
     public int MessageCount { get; set; }
     public DateTime LastActivityAt { get; set; }
     public DateTime Created { get; set; }
@@ -50,7 +54,8 @@ public record ConversationDto
         public Mapping()
         {
             CreateMap<Conversation, ConversationDto>()
-                .ForMember(dest => dest.CurrentAgentName, opt => opt.Ignore()); // Will be set separately
+                .ForMember(dest => dest.CurrentAgentName, opt => opt.Ignore()) // Will be set separately
+                .ForMember(dest => dest.ResolvedByAgentName, opt => opt.Ignore()); // Will be set separately
         }
     }
 }

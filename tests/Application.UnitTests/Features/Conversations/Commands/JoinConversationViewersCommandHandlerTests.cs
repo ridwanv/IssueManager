@@ -1,3 +1,8 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.JoinConversationViewers;
 using CleanArchitecture.Blazor.Domain.Entities;
@@ -31,7 +36,7 @@ public class JoinConversationViewersCommandHandlerTests
         {
             new Conversation
             {
-                Id = Guid.Parse(conversationId),
+                Id = 1, // Use an int value for Conversation.Id
                 ConversationReference = "CONV-001",
                 UserId = "customer-123",
                 TenantId = "tenant-1"

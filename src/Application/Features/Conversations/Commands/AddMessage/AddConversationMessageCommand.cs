@@ -45,11 +45,20 @@ public class AddConversationMessageCommandHandler : IRequestHandler<AddConversat
                 Mode = Domain.Enums.ConversationMode.Bot,
                 LastActivityAt = DateTime.UtcNow,
                 TenantId = "default", // Use default tenant for bot conversations
-                MessageCount = 0
+                MessageCount = 0,
+                ConversationChannelData = request.Message.ConversationChannelData // Store channel routing data
             };
             
             db.Conversations.Add(conversation);
             await db.SaveChangesAsync(cancellationToken); // Save to get the ID
+        }
+        else
+        {
+            // Update ConversationChannelData if provided (to handle channel changes)
+            if (!string.IsNullOrEmpty(request.Message.ConversationChannelData))
+            {
+                conversation.ConversationChannelData = request.Message.ConversationChannelData;
+            }
         }
 
         // Map the message

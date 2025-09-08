@@ -2,13 +2,17 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
+using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity;
+using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Enums;
 
 namespace CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation;
 
 public record CompleteConversationCommand(
     string ConversationId,
-    string? Summary = null
+    ResolutionCategory Category,
+    string ResolutionNotes,
+    bool NotifyCustomer = true
 ) : ICacheInvalidatorRequest<Result<bool>>
 {
     public string CacheKey => $"conversations-{ConversationId}";
@@ -20,18 +24,29 @@ public class CompleteConversationCommandHandler : IRequestHandler<CompleteConver
 {
     private readonly IApplicationDbContextFactory _dbContextFactory;
     private readonly IApplicationHubWrapper _hubWrapper;
+    private readonly IUserContextAccessor _userContextAccessor;
     
     public CompleteConversationCommandHandler(
         IApplicationDbContextFactory dbContextFactory,
-        IApplicationHubWrapper hubWrapper)
+        IApplicationHubWrapper hubWrapper,
+        IUserContextAccessor userContextAccessor)
     {
         _dbContextFactory = dbContextFactory;
         _hubWrapper = hubWrapper;
+        _userContextAccessor = userContextAccessor;
     }
     
     public async Task<Result<bool>> Handle(CompleteConversationCommand request, CancellationToken cancellationToken)
     {
         await using var db = await _dbContextFactory.CreateAsync(cancellationToken);
+        
+        var userContext = _userContextAccessor.Current;
+        if (userContext == null || string.IsNullOrEmpty(userContext.UserId))
+        {
+            return Result<bool>.Failure("User not authenticated");
+        }
+        
+        var currentUserId = userContext.UserId;
         
         // Get conversation
         var conversation = await db.Conversations
@@ -44,16 +59,14 @@ public class CompleteConversationCommandHandler : IRequestHandler<CompleteConver
         
         var agentId = conversation.CurrentAgentId;
         
-        // Update conversation
+        // Update conversation with resolution details
         conversation.Status = ConversationStatus.Completed;
         conversation.Mode = ConversationMode.Bot; // Back to bot for future messages
         conversation.CompletedAt = DateTime.UtcNow;
         conversation.LastActivityAt = DateTime.UtcNow;
-        
-        if (!string.IsNullOrEmpty(request.Summary))
-        {
-            conversation.ConversationSummary = request.Summary;
-        }
+        conversation.ResolutionCategory = request.Category;
+        conversation.ResolutionNotes = request.ResolutionNotes;
+        conversation.ResolvedByAgentId = currentUserId;
         
         // Clear agent assignment
         conversation.CurrentAgentId = null;
@@ -81,6 +94,8 @@ public class CompleteConversationCommandHandler : IRequestHandler<CompleteConver
             activeHandoff.Status = HandoffStatus.Completed;
             activeHandoff.CompletedAt = DateTime.UtcNow;
         }
+
+        // TODO: Add audit trail entry for completion if needed (EventLog is Issue-specific)
         
         await db.SaveChangesAsync(cancellationToken);
         

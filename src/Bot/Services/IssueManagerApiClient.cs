@@ -414,4 +414,107 @@ public class IssueManagerApiClient
             return await Result<List<ConversationMessageDto>>.FailureAsync("Failed to retrieve conversation messages");
         }
     }
+
+    /// <summary>
+    /// Notifies an agent of a user message during an active conversation handoff
+    /// </summary>
+    /// <param name="conversationId">Bot Framework conversation ID</param>
+    /// <param name="agentId">ID of the agent to notify</param>
+    /// <param name="userMessage">The user's message content</param>
+    /// <param name="userId">Optional user ID</param>
+    /// <param name="userName">Optional user name</param>
+    /// <param name="channelId">Optional channel ID</param>
+    /// <param name="urgency">Message urgency level</param>
+    /// <returns>Result indicating success or failure</returns>
+    public async Task<Result> NotifyAgentOfUserMessageAsync(
+        string conversationId,
+        string agentId,
+        string userMessage,
+        string? userId = null,
+        string? userName = null,
+        string? channelId = null,
+        NotificationUrgency urgency = NotificationUrgency.Normal)
+    {
+        try
+        {
+            _logger.LogInformation("Notifying agent {AgentId} of user message in conversation {ConversationId} via API", 
+                agentId, conversationId);
+
+            var notificationRequest = new
+            {
+                AgentId = agentId,
+                UserMessage = userMessage,
+                UserId = userId,
+                UserName = userName,
+                ChannelId = channelId,
+                Timestamp = DateTime.UtcNow,
+                Urgency = (int)urgency  // Send as integer value instead of string
+            };
+
+            var json = JsonSerializer.Serialize(notificationRequest, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync($"/api/conversations/{Uri.EscapeDataString(conversationId)}/notify-agent", content);
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonSerializer.Deserialize<Result>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                _logger.LogInformation("Agent {AgentId} successfully notified of user message in conversation {ConversationId}", 
+                    agentId, conversationId);
+                return result ?? await Result.FailureAsync("Failed to deserialize API response");
+            }
+            else
+            {
+                _logger.LogError("Agent notification API call failed with status {StatusCode}: {Response}", 
+                    response.StatusCode, responseContent);
+                
+                // Try to parse error response
+                try
+                {
+                    var errorResult = JsonSerializer.Deserialize<Result>(responseContent, new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+                    
+                    if (errorResult != null && !string.IsNullOrEmpty(errorResult.ErrorMessage))
+                    {
+                        return errorResult;
+                    }
+                }
+                catch
+                {
+                    // If error parsing fails, return generic error
+                }
+
+                return await Result.FailureAsync($"Agent notification API call failed with status {response.StatusCode}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP request failed when notifying agent {AgentId} in conversation {ConversationId}", 
+                agentId, conversationId);
+            return await Result.FailureAsync("Failed to connect to Issue Manager API");
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "Request timeout when notifying agent {AgentId} in conversation {ConversationId}", 
+                agentId, conversationId);
+            return await Result.FailureAsync("Agent notification request timeout - please try again");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error when notifying agent {AgentId} in conversation {ConversationId} via API", 
+                agentId, conversationId);
+            return await Result.FailureAsync("An unexpected error occurred during agent notification");
+        }
+    }
 }

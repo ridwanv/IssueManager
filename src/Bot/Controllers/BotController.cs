@@ -1,3 +1,4 @@
+﻿#nullable enable
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Bot.Builder;
@@ -9,6 +10,8 @@ using System;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using IssueManager.Bot.Services;
+using Microsoft.Bot.Schema;
+using Newtonsoft.Json.Linq;
 
 namespace IssueManager.Bot.Controllers
 {
@@ -87,7 +90,7 @@ namespace IssueManager.Bot.Controllers
                 }
 
                 // Reset the request body stream for bot framework processing
-                Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(requestBody));
+                Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(requestBody ?? string.Empty));
 
                 // Delegate to bot framework adapter for conversational AI processing
                 await _adapter.ProcessAsync(Request, Response, _bot);
@@ -300,6 +303,131 @@ namespace IssueManager.Bot.Controllers
                 return StatusCode(500, new { Success = false, Message = "Internal server error" });
             }
         }
+
+        /// <summary>
+        /// Endpoint for sending agent message activities through Bot Framework (Bot as Proxy)
+        /// </summary>
+        [HttpPost("api/agent-activity")]
+        public async Task<IActionResult> SendAgentActivityAsync([FromBody] AgentMessageActivityRequest request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrEmpty(request.ConversationId) || 
+                    string.IsNullOrEmpty(request.Content) || string.IsNullOrEmpty(request.AgentId))
+                {
+                    _logger.LogWarning("Invalid agent activity request - missing required fields");
+                    return BadRequest("ConversationId, Content, and AgentId are required");
+                }
+
+                _logger.LogInformation("Processing agent activity for conversation {ConversationId} from agent {AgentId}", 
+                    request.ConversationId, request.AgentId);
+
+                // Deserialize ConversationReference if present
+                ConversationReference? conversationRef = null;
+                if (!string.IsNullOrEmpty(request.ConversationReference))
+                {
+                    try
+                    {
+                        conversationRef = JsonSerializer.Deserialize<ConversationReference>(request.ConversationReference);
+                        if (conversationRef == null ||
+                            conversationRef.User == null ||
+                            conversationRef.Bot == null ||
+                            conversationRef.Conversation == null ||
+                            string.IsNullOrEmpty(conversationRef.ServiceUrl) ||
+                            string.IsNullOrEmpty(conversationRef.ChannelId))
+                        {
+                            _logger.LogError("ConversationReference is missing required fields.");
+                            return BadRequest("ConversationReference is missing required fields.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to deserialize ConversationReference");
+                        return BadRequest("Invalid ConversationReference format");
+                    }
+                }
+                else
+                {
+                    // Fallback to legacy construction
+                    conversationRef = new ConversationReference
+                    {
+                        Conversation = new ConversationAccount { Id = request.ConversationId },
+                        ServiceUrl = request.ServiceUrl ?? "http://localhost:5000",
+                        ChannelId = "whatsapp"
+                    };
+                }
+
+                // Create Bot Framework activity for agent message
+                var activity = new Activity
+                {
+                    Type = "agentMessage",
+                    Id = Guid.NewGuid().ToString(),
+                    Timestamp = DateTimeOffset.UtcNow,
+                    ServiceUrl = conversationRef.ServiceUrl,
+                    ChannelId = conversationRef.ChannelId,
+                    Conversation = conversationRef.Conversation,
+                    From = new ChannelAccount { Id = request.AgentId, Name = request.AgentName },
+                    Recipient = conversationRef.User, // ensure correct recipient
+                    Text = request.Content,
+                    Value = new
+                    {
+                        MessageType = "AgentResponse",
+                        AgentId = request.AgentId,
+                        AgentName = request.AgentName,
+                        TenantId = request.TenantId,
+                        Timestamp = request.Timestamp
+                    }
+                };
+
+                // Process agent activity through bot's message handler to trigger agent session management
+                await ((BotAdapter)_adapter).ContinueConversationAsync(
+                    string.Empty, // App ID - empty for local development
+                    conversationRef,
+                    async (context, cancellationToken) =>
+                    {
+                        // Update the existing context activity with agent information
+                        context.Activity.Type = ActivityTypes.Message;
+                        context.Activity.From = new ChannelAccount { Id = $"agent:{request.AgentId}", Name = request.AgentName };
+                        context.Activity.Text = request.Content;
+                        
+                        // Set properties to identify this as an agent message
+                        context.Activity.Properties = new JObject
+                        {
+                            ["isAgentMessage"] = "true",
+                            ["agentId"] = request.AgentId,
+                            ["agentName"] = request.AgentName ?? "Agent"
+                        };
+
+                        // Process through bot's message handler using the proper context
+                        await _bot.OnTurnAsync(context, cancellationToken);
+                    },
+                    default);
+
+                _logger.LogInformation("Agent activity processed successfully for conversation {ConversationId}", 
+                    request.ConversationId);
+
+                return Ok(new 
+                { 
+                    Success = true, 
+                    Message = "Agent activity sent successfully",
+                    ConversationId = request.ConversationId,
+                    AgentId = request.AgentId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing agent activity for conversation {ConversationId} from agent {AgentId}", 
+                    request?.ConversationId, request?.AgentId);
+                
+                return StatusCode(500, new 
+                { 
+                    Success = false, 
+                    Message = "Failed to process agent activity",
+                    ConversationId = request?.ConversationId,
+                    Error = ex.Message
+                });
+            }
+        }
     }
 
     /// <summary>
@@ -320,5 +448,20 @@ namespace IssueManager.Bot.Controllers
     {
         public string PhoneNumber { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Request model for agent message activities
+    /// </summary>
+    public class AgentMessageActivityRequest
+    {
+        public string ConversationId { get; set; } = default!;
+        public string Content { get; set; } = default!;
+        public string AgentId { get; set; } = default!;
+        public string AgentName { get; set; } = default!;
+        public string TenantId { get; set; } = default!;
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public string? ConversationReference { get; set; }
+        public string? ServiceUrl { get; set; }
     }
 }

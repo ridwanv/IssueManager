@@ -182,6 +182,140 @@ public class ConversationHandoffService
         }
     }
     
+    /// <summary>
+    /// Creates an agent presence activity for typing indicators
+    /// </summary>
+    public Activity CreateAgentPresenceActivity(
+        ITurnContext turnContext,
+        string agentId,
+        string agentName,
+        bool isTyping)
+    {
+        var presenceActivity = Activity.CreateEventActivity();
+        presenceActivity.Name = "agent.presence";
+        presenceActivity.Type = "agentPresence";
+        presenceActivity.From = new ChannelAccount { Id = agentId, Name = agentName };
+        presenceActivity.Recipient = turnContext.Activity.From;
+        presenceActivity.Conversation = turnContext.Activity.Conversation;
+        presenceActivity.ChannelId = turnContext.Activity.ChannelId;
+        
+        presenceActivity.Value = new
+        {
+            MessageType = "AgentPresence",
+            IsTyping = isTyping,
+            AgentId = agentId,
+            AgentName = agentName,
+            Timestamp = DateTime.UtcNow
+        };
+        
+        return (Activity)presenceActivity;
+    }
+
+    /// <summary>
+    /// Updates conversation state for active agent handoff sessions
+    /// </summary>
+    public void UpdateHandoffSession(
+        ConversationData conversationData,
+        string agentId,
+        string agentName,
+        string status)
+    {
+        switch (status.ToLowerInvariant())
+        {
+            case "connected":
+            case "active":
+                conversationData.IsEscalated = true;
+                conversationData.AgentName = agentName;
+                conversationData.CurrentAgentId = agentId;
+                conversationData.HandoffStartedAt = DateTime.UtcNow;
+                break;
+                
+            case "completed":
+            case "ended":
+                conversationData.HandbackToBot();
+                conversationData.CurrentAgentId = null;
+                conversationData.HandoffCompletedAt = DateTime.UtcNow;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Validates if the conversation is in a valid state for agent message routing
+    /// </summary>
+    public bool IsValidForAgentRouting(ConversationData conversationData, string agentId)
+    {
+        return conversationData.IsEscalated && 
+               !string.IsNullOrEmpty(conversationData.CurrentAgentId) &&
+               conversationData.CurrentAgentId == agentId;
+    }
+
+    /// <summary>
+    /// Creates handoff status events for agent message delivery confirmation
+    /// </summary>
+    public Activity CreateMessageDeliveryConfirmation(
+        ITurnContext turnContext,
+        string agentId,
+        string agentName,
+        string messageId,
+        bool delivered)
+    {
+        var confirmationActivity = Activity.CreateEventActivity();
+        confirmationActivity.Name = "agent.message.delivery";
+        confirmationActivity.From = new ChannelAccount { Id = agentId, Name = agentName };
+        confirmationActivity.Recipient = turnContext.Activity.From;
+        confirmationActivity.Conversation = turnContext.Activity.Conversation;
+        confirmationActivity.ChannelId = turnContext.Activity.ChannelId;
+        
+        confirmationActivity.Value = new
+        {
+            MessageType = "DeliveryConfirmation",
+            MessageId = messageId,
+            Delivered = delivered,
+            AgentId = agentId,
+            AgentName = agentName,
+            Timestamp = DateTime.UtcNow
+        };
+        
+        return (Activity)confirmationActivity;
+    }
+
+    /// <summary>
+    /// Processes agent message activities and maintains conversation context
+    /// </summary>
+    public async Task<bool> ProcessAgentMessageActivity(
+        ITurnContext turnContext, 
+        ConversationData conversationData)
+    {
+        try
+        {
+            if (turnContext.Activity.Type != "agentMessage")
+                return false;
+
+            var agentId = turnContext.Activity.From?.Id;
+            var agentName = turnContext.Activity.From?.Name ?? "Agent";
+            
+            if (string.IsNullOrEmpty(agentId))
+                return false;
+
+            // Validate agent has permission to send messages in this conversation
+            if (!IsValidForAgentRouting(conversationData, agentId))
+            {
+                Console.WriteLine($"Agent {agentId} not authorized for conversation routing");
+                return false;
+            }
+
+            // Update conversation state to maintain handoff context
+            UpdateHandoffSession(conversationData, agentId, agentName, "active");
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error processing agent message activity: {ex.Message}");
+            return false;
+        }
+    }
+    
     private string GetDefaultStatusMessage(string state)
     {
         return state switch

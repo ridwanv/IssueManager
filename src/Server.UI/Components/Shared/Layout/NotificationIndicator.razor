@@ -1,0 +1,695 @@
+﻿@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using Microsoft.AspNetCore.SignalR.Client
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
+@using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using MudBlazor
+@inject SignalRConnectionService SignalRService
+@inject IUserProfileState UserProfileState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+    <ActivatorContent>
+        <MudBadge Content="@_notificationCount" 
+                  Color="Color.Error" 
+                  Overlap="true" 
+                  Visible="@(_notificationCount > 0)"
+                  Class="@GetBadgeClass()">
+            <MudIconButton Icon="@Icons.Material.Filled.Message" 
+                           Color="Color.Inherit" 
+                           Size="Size.Medium" />
+        </MudBadge>
+    </ActivatorContent>
+    <ChildContent>
+        @if (_notifications.Count == 0)
+        {
+            <MudMenuItem>
+                <MudText Typo="Typo.body2" Class="pa-2">No new notifications</MudText>
+            </MudMenuItem>
+        }
+        else
+        {
+            <MudMenuItem OnClick="MarkAllAsRead">
+                <MudText Typo="Typo.caption" Class="pa-1">Mark all as read</MudText>
+            </MudMenuItem>
+            <MudDivider />
+            @foreach (var notification in _notifications.Take(10))
+            {
+                <MudMenuItem OnClick="@(() => HandleNotificationItemClick(notification))" Class="notification-item">
+                    <div class="d-flex flex-column pa-1" style="max-width: 300px;">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @notification.From - @notification.Timestamp.ToString("HH:mm")
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="text-truncate">
+                            @notification.Message
+                        </MudText>
+                    </div>
+                </MudMenuItem>
+            }
+            @if (_notifications.Count > 10)
+            {
+                <MudDivider />
+                <MudMenuItem>
+                    <MudText Typo="Typo.caption" Class="pa-1">+@(_notifications.Count - 10) more...</MudText>
+                </MudMenuItem>
+            }
+        }
+    </ChildContent>
+</MudMenu>
+
+@code {
+    [Parameter] public EventCallback OnNotificationClick { get; set; }
+    [Parameter] public EventCallback<NotificationItem> OnNotificationItemClick { get; set; }
+
+    private int _notificationCount = 0;
+    private bool _hasUnacknowledged = false;
+    private string _currentUserId = string.Empty;
+    private readonly HashSet<string> _assignedConversations = new();
+    // Track groups actually joined so we can avoid redundant Join calls and support proper Leave on completion
+    private readonly HashSet<string> _joinedGroups = new();
+    private readonly List<NotificationItem> _notifications = new();
+    private Timer? _blinkTimer;
+    private bool _isBlinking = false;
+    private HubConnection? _hubConnection;
+
+    public class NotificationItem
+    {
+        public string ConversationId { get; set; } = string.Empty;
+        public string From { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+        public bool IsFromAgent { get; set; }
+        public bool IsRead { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("[NotificationIndicator] OnInitializedAsync called");
+        GetCurrentUserId();
+        await InitializeSignalR();
+        
+        // Add a test notification to verify UI is working
+        Console.WriteLine("[NotificationIndicator] Adding test notification for UI verification");
+        var testNotification = new NotificationItem
+        {
+            ConversationId = "test-ui-verification",
+            From = "System",
+            Message = "UI Test: If you see this notification, the component is working correctly!",
+            Timestamp = DateTime.Now,
+            IsFromAgent = false,
+            IsRead = false
+        };
+        _notifications.Add(testNotification);
+        _notificationCount = _notifications.Count(n => !n.IsRead);
+        Console.WriteLine($"[NotificationIndicator] Test notification added. Count: {_notificationCount}");
+        
+        // Force UI update for test notification
+        await InvokeAsync(StateHasChanged);
+        
+        Console.WriteLine("[NotificationIndicator] Component initialized and ready to receive SignalR events");
+    }
+    
+
+
+    private void GetCurrentUserId()
+    {
+        try
+        {
+            // Try to get user ID from UserProfileState first
+            var userProfile = UserProfileState.Value;
+            if (!string.IsNullOrEmpty(userProfile?.UserId))
+            {
+                _currentUserId = userProfile.UserId;
+                Console.WriteLine($"[NotificationIndicator] Got user ID from UserProfileState: {_currentUserId}");
+                return;
+            }
+
+            // Fallback: try to get from authentication state
+            Console.WriteLine("[NotificationIndicator] UserProfileState not available, trying AuthenticationStateProvider");
+            
+            // This will be populated after the component initializes
+            Task.Run(async () =>
+            {
+                try
+                {
+                    var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                    var user = authState.User;
+                    var userId = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
+                               ?? user?.FindFirst("sub")?.Value
+                               ?? user?.Identity?.Name;
+                    
+                    if (!string.IsNullOrEmpty(userId))
+                    {
+                        _currentUserId = userId;
+                        Console.WriteLine($"[NotificationIndicator] Got user ID from AuthenticationStateProvider: {_currentUserId}");
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    else
+                    {
+                        Console.WriteLine("[NotificationIndicator] Could not get user ID from any source");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[NotificationIndicator] Error getting user ID from auth state: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting current user from UserProfileState: {ex.Message}");
+        }
+    }
+
+    private async Task InitializeSignalR()
+    {
+        try
+        {
+            // Use the SignalRConnectionService to get the connection
+            await SignalRService.EnsureConnectedAsync();
+            _hubConnection = SignalRService.HubConnection;
+
+            if (_hubConnection != null)
+            {
+                Console.WriteLine("[NotificationIndicator] Setting up SignalR event handlers...");
+
+                // Connection lifecycle logging & group rejoin
+                _hubConnection.Reconnecting += (ex) =>
+                {
+                    Console.WriteLine($"[NotificationIndicator] SignalR reconnecting... {ex?.Message}");
+                    return Task.CompletedTask;
+                };
+                _hubConnection.Reconnected += async (id) =>
+                {
+                    Console.WriteLine($"[NotificationIndicator] SignalR reconnected (ConnectionId={id}). Rejoining groups...");
+                    await RejoinAssignedConversationGroups();
+                };
+
+                // Subscribe to conversation assignment events
+                _hubConnection.On<string, string, string>("ConversationAssigned", OnConversationAssigned);
+                
+                // Subscribe to conversation completion events  
+                _hubConnection.On<string, string>("ConversationCompleted", OnConversationCompleted);
+
+                // Subscribe to real-time message updates (new event format)
+                _hubConnection.On<ConversationMessageDto>("NewMessageReceived", OnNewMessageReceived);
+                // Fallback subscription in case server sends an anonymous object instead of strongly typed DTO
+                _hubConnection.On<object>("NewMessageReceived", async (raw) => await OnNewMessageReceivedObject(raw));
+
+                // Also subscribe to original message event format in case server uses this
+                _hubConnection.On<string, string, string, bool>("NewConversationMessage", OnNewConversationMessage);
+
+                Console.WriteLine("[NotificationIndicator] All SignalR event handlers set up");
+
+                // Re-join any previously tracked conversation groups (after reconnect)
+                await RejoinAssignedConversationGroups();
+
+                // Add a test function accessible from browser console
+                await JSRuntime.InvokeVoidAsync("eval", @"
+                    window.testAssignConversation = function(conversationId, agentId) {
+                        console.log('[TEST] Manually triggering ConversationAssigned event');
+                        fetch('/api/conversations/test-assign', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ conversationId: conversationId || 'test-123', agentId: agentId || 'current-user' })
+                        }).then(r => r.json()).then(console.log).catch(console.error);
+                    };
+                    console.log('[TEST] Added window.testAssignConversation(conversationId, agentId) function');
+                ");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR connection error: {ex.Message}");
+        }
+    }
+
+    private async Task OnConversationAssigned(string conversationId, string agentId, string agentName)
+    {
+        Console.WriteLine($"[NotificationIndicator] ConversationAssigned: ConversationId={conversationId}, AgentId={agentId}, AgentName={agentName}");
+        Console.WriteLine($"[NotificationIndicator] CurrentUserId: '{_currentUserId}' (Length: {_currentUserId?.Length ?? 0})");
+        
+        // Remove test notification if it exists
+        var testNotification = _notifications.FirstOrDefault(n => n.ConversationId == "test-ui-verification");
+        if (testNotification != null)
+        {
+            _notifications.Remove(testNotification);
+            Console.WriteLine("[NotificationIndicator] Removed test notification");
+        }
+        
+        // If we don't have a current user ID yet, try to get it
+        if (string.IsNullOrEmpty(_currentUserId))
+        {
+            Console.WriteLine("[NotificationIndicator] No current user ID, attempting to get it...");
+            GetCurrentUserId();
+            
+            // Wait a bit for the async user ID detection to complete
+            await Task.Delay(500);
+            Console.WriteLine($"[NotificationIndicator] After delay, CurrentUserId: '{_currentUserId}'");
+        }
+        
+        // For debugging - accept any assignment if we can't determine the current user
+        bool shouldAccept = false;
+        if (!string.IsNullOrEmpty(_currentUserId) && agentId == _currentUserId)
+        {
+            shouldAccept = true;
+            Console.WriteLine($"[NotificationIndicator] Accepting assignment - agent ID matches current user");
+        }
+        else if (string.IsNullOrEmpty(_currentUserId))
+        {
+            shouldAccept = true;
+            Console.WriteLine($"[NotificationIndicator] Accepting assignment - no current user ID available (debug mode)");
+        }
+        else
+        {
+            Console.WriteLine($"[NotificationIndicator] Ignoring assignment - agent ID mismatch. AgentId: '{agentId}', CurrentUserId: '{_currentUserId}'");
+        }
+        
+        if (shouldAccept)
+        {
+            Console.WriteLine($"[NotificationIndicator] Adding conversation {conversationId} to assigned list");
+            _assignedConversations.Add(conversationId);
+
+            // Join the SignalR conversation group so we receive NewMessageReceived group events even when not on detail page
+            await JoinConversationGroupIfNeeded(conversationId);
+            
+            // Add a notification for the assignment
+            var assignmentNotification = new NotificationItem
+            {
+                ConversationId = conversationId,
+                From = "System",
+                Message = $"You have been assigned to conversation {conversationId}",
+                Timestamp = DateTime.Now,
+                IsFromAgent = false,
+                IsRead = false
+            };
+            
+            _notifications.Insert(0, assignmentNotification);
+            _notificationCount = _notifications.Count(n => !n.IsRead);
+            
+            StartBlinking();
+            await InvokeAsync(StateHasChanged);
+            
+            Console.WriteLine($"[NotificationIndicator] Assignment notification added. Total count: {_notificationCount}");
+        }
+    }
+
+    private async Task OnConversationCompleted(string conversationId, string agentId)
+    {
+        Console.WriteLine($"[NotificationIndicator] ConversationCompleted: ConversationId={conversationId}, AgentId={agentId}");
+        _assignedConversations.Remove(conversationId);
+    // Leave the SignalR group so we stop receiving further messages for completed conversation
+    await LeaveConversationGroupIfJoined(conversationId);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnNewMessageReceived(ConversationMessageDto message)
+    {
+        // The hub delivers ConversationMessageDto with BOTH numeric ConversationId (int) and BotFrameworkConversationId (string).
+        // ConversationAssigned events (which populate _assignedConversations) use the numeric conversationId (as string).
+        // Previously we only compared BotFrameworkConversationId, causing mismatch and dropped notifications.
+        var numericId = message.ConversationId.ToString();
+        var botFrameworkId = message.BotFrameworkConversationId;
+
+        Console.WriteLine($"[NotificationIndicator] NewMessageReceived: NumericId={numericId}, BotFrameworkId={botFrameworkId}, From={message.UserName}");
+        Console.WriteLine($"[NotificationIndicator] Assigned list: {string.Join(", ", _assignedConversations)}");
+
+        // Remove test notification if it exists (one-time bootstrap)
+        var testNotification = _notifications.FirstOrDefault(n => n.ConversationId == "test-ui-verification");
+        if (testNotification != null)
+        {
+            _notifications.Remove(testNotification);
+            Console.WriteLine("[NotificationIndicator] Removed test notification");
+        }
+
+        await InvokeAsync(async () =>
+        {
+            bool isAssigned = _assignedConversations.Contains(numericId) ||
+                              (!string.IsNullOrEmpty(botFrameworkId) && _assignedConversations.Contains(botFrameworkId));
+
+            if (!isAssigned)
+            {
+                // For deeper diagnostics, log why it failed
+                Console.WriteLine($"[NotificationIndicator][DEBUG] Message filtered out. numericIdInList={_assignedConversations.Contains(numericId)}, botFrameworkIdInList={_assignedConversations.Contains(botFrameworkId ?? "<null>")}");
+            }
+
+            // Show only if assigned OR in debug fallback when no assignments yet (helps initial validation)
+            bool debugFallback = _assignedConversations.Count == 0; // remove later for production strictness
+            if (isAssigned || debugFallback)
+            {
+                var chosenId = isAssigned ? ( _assignedConversations.Contains(numericId) ? numericId : botFrameworkId ) : numericId;
+                Console.WriteLine($"[NotificationIndicator] Adding notification for conversation {chosenId} (isAssigned={isAssigned}, debugFallback={debugFallback})");
+
+                // Ensure we store BOTH numeric and bot framework IDs for cross-event compatibility.
+                // This fixes the scenario where subsequent legacy 'NewConversationMessage' events use the BotFrameworkConversationId
+                // and were previously filtered out because only the numeric ID was tracked from assignment.
+                if (isAssigned && !_assignedConversations.Contains(numericId))
+                {
+                    _assignedConversations.Add(numericId);
+                    Console.WriteLine($"[NotificationIndicator][Mapping] Added numericId mapping {numericId}");
+                }
+                if (isAssigned && !string.IsNullOrEmpty(botFrameworkId) && !_assignedConversations.Contains(botFrameworkId))
+                {
+                    _assignedConversations.Add(botFrameworkId);
+                    Console.WriteLine($"[NotificationIndicator][Mapping] Added botFrameworkId mapping {botFrameworkId}");
+                }
+
+                var notification = new NotificationItem
+                {
+                    ConversationId = chosenId ?? numericId, // ensure non-null
+                    From = message.UserName ?? "Unknown User",
+                    Message = message.Content,
+                    Timestamp = DateTime.Now,
+                    IsFromAgent = message.Role == "agent",
+                    IsRead = false
+                };
+
+                _notifications.Insert(0, notification);
+
+                if (_notifications.Count > 50)
+                {
+                    _notifications.RemoveRange(50, _notifications.Count - 50);
+                }
+
+                _notificationCount = _notifications.Count(n => !n.IsRead);
+                Console.WriteLine($"[NotificationIndicator] Notification added. Unread={_notificationCount}");
+
+                StartBlinking();
+                await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                Console.WriteLine($"[NotificationIndicator] Ignoring message (not assigned): numericId={numericId}, botFrameworkId={botFrameworkId}");
+            }
+        });
+    }
+
+    private async Task OnNewConversationMessage(string conversationId, string from, string message, bool isFromAgent)
+    {
+        Console.WriteLine($"[NotificationIndicator] NewConversationMessage event: ConversationId={conversationId}, From={from}, Message='{message}', IsFromAgent={isFromAgent}");
+        Console.WriteLine($"[NotificationIndicator] Assigned conversations count: {_assignedConversations.Count}");
+        Console.WriteLine($"[NotificationIndicator] Assigned conversations: {string.Join(", ", _assignedConversations)}");
+        Console.WriteLine($"[NotificationIndicator] Current user ID: '{_currentUserId}'");
+        
+        // Remove test notification if it exists
+        var testNotification = _notifications.FirstOrDefault(n => n.ConversationId == "test-ui-verification");
+        if (testNotification != null)
+        {
+            _notifications.Remove(testNotification);
+            Console.WriteLine("[NotificationIndicator] Removed test notification");
+        }
+        
+        await InvokeAsync(async () =>
+        {
+            // Always map legacy conversation ID on first sight so future messages are recognized
+            var wasKnown = _assignedConversations.Contains(conversationId);
+            if (!wasKnown)
+            {
+                _assignedConversations.Add(conversationId);
+                Console.WriteLine($"[NotificationIndicator][Mapping] Added (pre-filter) legacy conversationId mapping {conversationId}");
+                await JoinConversationGroupIfNeeded(conversationId);
+            }
+            // For debugging - show notifications for any conversation if we can't determine assignments
+            bool shouldShowNotification = false;
+            
+            // Primary rule: if conversation now known (mapped above), show it
+            if (_assignedConversations.Contains(conversationId))
+            {
+                shouldShowNotification = true;
+                Console.WriteLine($"[NotificationIndicator] Showing notification for known conversation {conversationId} (wasKnown={wasKnown})");
+            }
+            else if (string.IsNullOrEmpty(_currentUserId) || _assignedConversations.Count == 0)
+            {
+                // Fallback debug allowances
+                shouldShowNotification = true;
+                Console.WriteLine($"[NotificationIndicator] Showing notification via fallback rules {conversationId}");
+            }
+            
+            if (shouldShowNotification)
+            {
+                Console.WriteLine($"[NotificationIndicator] Adding notification for conversation {conversationId}");
+
+                // If this is the legacy event path and we only have one form of ID, try to retain it for future matching.
+                if (!_assignedConversations.Contains(conversationId))
+                {
+                    // Already mapped above, but retain defensive code path.
+                    Console.WriteLine($"[NotificationIndicator][Mapping] (post-filter) ensuring legacy conversationId mapping {conversationId}");
+                    await JoinConversationGroupIfNeeded(conversationId);                
+                }
+
+                var notification = new NotificationItem
+                {
+                    ConversationId = conversationId,
+                    From = from,
+                    Message = message,
+                    Timestamp = DateTime.Now,
+                    IsFromAgent = isFromAgent,
+                    IsRead = false
+                };
+
+                _notifications.Insert(0, notification);
+
+                // Keep only last 50 notifications to prevent memory issues
+                if (_notifications.Count > 50)
+                {
+                    _notifications.RemoveRange(50, _notifications.Count - 50);
+                }
+
+                _notificationCount = _notifications.Count(n => !n.IsRead);
+                Console.WriteLine($"[NotificationIndicator] Added notification. Total count: {_notificationCount}");
+
+                StartBlinking();
+                await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                Console.WriteLine($"[NotificationIndicator] Ignoring message for conversation {conversationId}");
+            }
+        });
+    }
+
+    // Fallback handler for object-form NewMessageReceived payloads
+    private async Task OnNewMessageReceivedObject(object raw)
+    {
+        try
+        {
+            if (raw is ConversationMessageDto dto)
+            {
+                await OnNewMessageReceived(dto);
+                return;
+            }
+
+            // Handle System.Text.Json JsonElement
+            if (raw is System.Text.Json.JsonElement je)
+            {
+                var json = je.GetRawText();
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<ConversationMessageDto>(json);
+                if (parsed != null)
+                {
+                    await OnNewMessageReceived(parsed);
+                    return;
+                }
+            }
+
+            // Last resort: serialize and deserialize
+            var serialized = System.Text.Json.JsonSerializer.Serialize(raw);
+            var fallback = System.Text.Json.JsonSerializer.Deserialize<ConversationMessageDto>(serialized);
+            if (fallback != null)
+            {
+                await OnNewMessageReceived(fallback);
+            }
+            else
+            {
+                Console.WriteLine("[NotificationIndicator][WARN] Unable to parse raw NewMessageReceived payload");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[NotificationIndicator][ERROR] Failed to process object NewMessageReceived payload: {ex.Message}");
+        }
+    }
+
+
+    
+    private async Task TryReconnect()
+    {
+        try
+        {
+            Console.WriteLine("[NotificationIndicator] Attempting to reconnect SignalR...");
+            await SignalRService.EnsureConnectedAsync();
+            var connection = SignalRService.HubConnection;
+            if (connection?.State == HubConnectionState.Connected)
+            {
+                Console.WriteLine("[NotificationIndicator] Reconnected successfully");
+                // Event handlers are already set up in InitializeSignalR
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[NotificationIndicator] Failed to reconnect: {ex.Message}");
+        }
+    }
+
+    private void StartBlinking()
+    {
+        if (_blinkTimer != null)
+        {
+            _blinkTimer.Dispose();
+        }
+
+        _hasUnacknowledged = true;
+        _isBlinking = true;
+        
+        _blinkTimer = new Timer(async _ =>
+        {
+            _isBlinking = !_isBlinking;
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(800));
+    }
+
+    private void StopBlinking()
+    {
+        _hasUnacknowledged = false;
+        _isBlinking = false;
+        _blinkTimer?.Dispose();
+        _blinkTimer = null;
+    }
+
+    private string GetBadgeClass()
+    {
+        var baseClass = "notification-badge";
+        if (_hasUnacknowledged && _isBlinking)
+        {
+            baseClass += " notification-blink";
+        }
+        return baseClass;
+    }
+
+    // Join a specific conversation group if not already joined (best effort, idempotent)
+    private async Task JoinConversationGroupIfNeeded(string conversationId)
+    {
+        try
+        {
+            if (_hubConnection?.State == HubConnectionState.Connected && !string.IsNullOrWhiteSpace(conversationId) && !_joinedGroups.Contains(conversationId))
+            {
+                await _hubConnection.InvokeAsync("JoinConversationGroup", conversationId);
+                _joinedGroups.Add(conversationId);
+                Console.WriteLine($"[NotificationIndicator] Joined conversation group {conversationId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[NotificationIndicator] Failed to join conversation group {conversationId}: {ex.Message}");
+        }
+    }
+
+    // After reconnect, rejoin all assigned conversations so we still receive group-scoped NewMessageReceived events
+    private async Task RejoinAssignedConversationGroups()
+    {
+        if (_assignedConversations.Count == 0) return;
+        Console.WriteLine($"[NotificationIndicator] Rejoining {_assignedConversations.Count} conversation groups after connect/reconnect");
+        foreach (var cid in _assignedConversations.ToList())
+        {
+            await JoinConversationGroupIfNeeded(cid);
+        }
+    }
+
+    // Leave group if previously joined
+    private async Task LeaveConversationGroupIfJoined(string conversationId)
+    {
+        try
+        {
+            if (_hubConnection?.State == HubConnectionState.Connected && _joinedGroups.Contains(conversationId))
+            {
+                await _hubConnection.InvokeAsync("LeaveConversationGroup", conversationId);
+                _joinedGroups.Remove(conversationId);
+                Console.WriteLine($"[NotificationIndicator] Left conversation group {conversationId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[NotificationIndicator] Failed to leave conversation group {conversationId}: {ex.Message}");
+        }
+    }
+    
+    private async Task MarkAllAsRead()
+    {
+        foreach (var notification in _notifications)
+        {
+            notification.IsRead = true;
+        }
+        _notificationCount = 0;
+        StopBlinking();
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    private async Task HandleNotificationItemClick(NotificationItem notification)
+    {
+        notification.IsRead = true;
+        _notificationCount = _notifications.Count(n => !n.IsRead);
+        
+        if (_notificationCount == 0)
+        {
+            StopBlinking();
+        }
+        
+        await InvokeAsync(StateHasChanged);
+        
+        // Invoke the parent callback with the notification details
+        if (OnNotificationItemClick.HasDelegate)
+        {
+            await OnNotificationItemClick.InvokeAsync(notification);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _blinkTimer?.Dispose();
+        
+        var connection = SignalRService.HubConnection;
+        if (connection != null)
+        {
+            connection.Remove("ConversationAssigned");
+            connection.Remove("ConversationCompleted");
+            connection.Remove("NewMessageReceived");
+            connection.Remove("NewConversationMessage");
+        }
+        
+        return ValueTask.CompletedTask;
+    }
+}
+
+<style>
+    .notification-badge {
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    .notification-blink {
+        animation: blink 0.8s infinite;
+    }
+
+    @@keyframes blink {
+        0%, 50% {
+            opacity: 1;
+        }
+        51%, 100% {
+            opacity: 0.3;
+        }
+    }
+    
+    .notification-item:hover {
+        background-color: var(--mud-palette-action-hover) !important;
+    }
+    
+    .notification-item {
+        cursor: pointer;
+        border-bottom: 1px solid var(--mud-palette-divider);
+    }
+    
+    .notification-item:last-child {
+        border-bottom: none;
+    }
+</style>

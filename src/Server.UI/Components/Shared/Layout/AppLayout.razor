@@ -3,6 +3,7 @@
 @using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
 @using CleanArchitecture.Blazor.Application.Common.Extensions
 @using CleanArchitecture.Blazor.Server.UI.Components.Conversations
+@using CleanArchitecture.Blazor.Server.UI.Components.Shared.Layout
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Extensions.Logging
 @inject IUserProfileState UserProfileState
@@ -21,8 +22,6 @@
                         OpenSearchDialog="OpenSearchDialog"
                         IsDarkMode="@LayoutService.IsDarkMode"
                         ToggleNavigationMenuDrawer="ToggleNavigationMenuDrawer"
-                        RightToLeft="@LayoutService.IsRTL"
-                        RightToLeftToggle="LayoutService.ToggleRightToLeft"
                         OnSettingClick="@(() => themeSettings?.OpenSetting())" />
             <NavigationMenu DrawerOpen="_navigationMenuDrawerOpen" Roles="@(UserProfile?.AssignedRoles??[])"
                             DrawerOpenChanged="NavigationMenuDrawerOpenChangedHandler"
@@ -49,6 +48,10 @@
             
             <!-- Global Escalation Popup Service -->
             <EscalationPopupService />
+            <!-- Global Conversation Notifications -->
+            <div style="position:fixed; bottom:16px; right:16px; z-index:1000;">
+                <NotificationIndicator />
+            </div>
         </Authorized>
     </AuthorizeView>
 </MudLayout>
@@ -86,7 +89,8 @@
     public async ValueTask DisposeAsync()
     {
         UserProfileState.Changed -= OnUserProfileChanged;
-        GC.SuppressFinalize(this);
+    GC.SuppressFinalize(this);
+    await Task.CompletedTask;
     }
     
     protected override void OnParametersSet()

@@ -16,6 +16,7 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
 @inject SignalRConnectionService SignalRService
+@inject IDialogService DialogService
 @implements IAsyncDisposable
 
 <PageTitle>@L["Conversation Details"] - @(conversationDetails?.Conversation.ConversationReference ?? ConversationId)</PageTitle>
@@ -88,6 +89,11 @@
                             TransformOrigin="Origin.TopRight">
                         <MudMenuItem Icon="@Icons.Material.Filled.Download">@L["Export"]</MudMenuItem>
                         <MudMenuItem Icon="@Icons.Material.Filled.Share">@L["Share"]</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" 
+                                    OnClick="OpenWrapupDialog"
+                                    Disabled="@(conversationDetails?.Conversation.Status == ConversationStatus.Completed)">
+                            @L["Complete Conversation"]
+                        </MudMenuItem>
                         <MudMenuItem Icon="@Icons.Material.Filled.Archive">@L["Archive"]</MudMenuItem>
                     </MudMenu>
                 </div>
@@ -411,6 +417,16 @@
     private string _originalTitle = string.Empty;
     private int _unreadMessages = 0;
     private Timer? _typingTimer;
+    // SignalR handler disposables to avoid calling Remove(method) which clears other components' handlers
+    private IDisposable? _newMessageReceivedHandler;
+    private IDisposable? _conversationStatusChangedHandler;
+    private IDisposable? _customerTypingHandler;
+    private IDisposable? _agentJoinedHandler;
+    private IDisposable? _agentLeftHandler;
+    private IDisposable? _conversationViewersUpdatedHandler;
+    private IDisposable? _legacyNewConversationMessageHandler;
+    private IDisposable? _legacyConversationAssignedHandler;
+    private IDisposable? _legacyConversationCompletedHandler;
 
     protected override async Task OnInitializedAsync()
     {
@@ -524,24 +540,24 @@
                 _hubConnection.Reconnected += OnReconnected;
                 _hubConnection.Closed += OnConnectionClosed;
 
-                // Subscribe to real-time message updates
-                _hubConnection.On<ConversationMessageDto>("NewMessageReceived", OnNewMessageReceived);
-                
+                // Subscribe to real-time message updates (store disposables so only this component unsubscribes its own handlers)
+                _newMessageReceivedHandler = _hubConnection.On<ConversationMessageDto>("NewMessageReceived", OnNewMessageReceived);
+
                 // Subscribe to conversation status changes
-                _hubConnection.On<string, ConversationStatus>("ConversationStatusChanged", OnConversationStatusChanged);
-                
+                _conversationStatusChangedHandler = _hubConnection.On<string, ConversationStatus>("ConversationStatusChanged", OnConversationStatusChanged);
+
                 // Subscribe to typing indicators
-                _hubConnection.On<string, bool>("CustomerTyping", OnCustomerTyping);
-                
+                _customerTypingHandler = _hubConnection.On<string, bool>("CustomerTyping", OnCustomerTyping);
+
                 // Subscribe to agent presence updates
-                _hubConnection.On<string, string, string>("AgentJoinedConversation", OnAgentJoinedConversation);
-                _hubConnection.On<string, string>("AgentLeftConversation", OnAgentLeftConversation);
-                _hubConnection.On<string, List<ConversationViewerDto>>("ConversationViewersUpdated", OnConversationViewersUpdated);
-                
+                _agentJoinedHandler = _hubConnection.On<string, string, string>("AgentJoinedConversation", OnAgentJoinedConversation);
+                _agentLeftHandler = _hubConnection.On<string, string>("AgentLeftConversation", OnAgentLeftConversation);
+                _conversationViewersUpdatedHandler = _hubConnection.On<string, List<ConversationViewerDto>>("ConversationViewersUpdated", OnConversationViewersUpdated);
+
                 // Legacy message handlers for backward compatibility
-                _hubConnection.On<string, string, string, bool>("NewConversationMessage", OnLegacyNewConversationMessage);
-                _hubConnection.On<int, string, string>("ConversationAssigned", OnConversationAssigned);
-                _hubConnection.On<int, string>("ConversationCompleted", OnConversationCompleted);
+                _legacyNewConversationMessageHandler = _hubConnection.On<string, string, string, bool>("NewConversationMessage", OnLegacyNewConversationMessage);
+                _legacyConversationAssignedHandler = _hubConnection.On<int, string, string>("ConversationAssigned", OnConversationAssigned);
+                _legacyConversationCompletedHandler = _hubConnection.On<int, string>("ConversationCompleted", OnConversationCompleted);
 
                 UpdateConnectionStatus("connected");
                 
@@ -865,6 +881,42 @@
         }
     }
 
+    private async Task OpenWrapupDialog()
+    {
+        if (conversationDetails?.Conversation.Status == ConversationStatus.Completed)
+        {
+            Snackbar.Add(L["This conversation is already completed"], Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            { nameof(ConversationWrapupDialog.ConversationId), ConversationId }
+        };
+
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<ConversationWrapupDialog>(
+            L["Complete Conversation"], 
+            parameters, 
+            options);
+
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            // Refresh the conversation details to show the updated status
+            await LoadConversation();
+            StateHasChanged();
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         try
@@ -873,19 +925,25 @@
             
             if (_hubConnection != null)
             {
-                // Unsubscribe from events
-                _hubConnection.Remove("NewMessageReceived");
-                _hubConnection.Remove("ConversationStatusChanged");
-                _hubConnection.Remove("CustomerTyping");
-                _hubConnection.Remove("AgentJoinedConversation");
-                _hubConnection.Remove("AgentLeftConversation");
-                _hubConnection.Remove("ConversationViewersUpdated");
-                _hubConnection.Remove("NewConversationMessage");
-                _hubConnection.Remove("ConversationAssigned");
-                _hubConnection.Remove("ConversationCompleted");
+                // Dispose only handlers registered by this component (won't affect NotificationIndicator or others)
+                _newMessageReceivedHandler?.Dispose();
+                _conversationStatusChangedHandler?.Dispose();
+                _customerTypingHandler?.Dispose();
+                _agentJoinedHandler?.Dispose();
+                _agentLeftHandler?.Dispose();
+                _conversationViewersUpdatedHandler?.Dispose();
+                _legacyNewConversationMessageHandler?.Dispose();
+                _legacyConversationAssignedHandler?.Dispose();
+                _legacyConversationCompletedHandler?.Dispose();
                 
                 // Leave conversation group but don't dispose the shared connection
-                await _hubConnection.InvokeAsync("LeaveConversationGroup", ConversationId);
+                // NOTE: Intentionally NOT leaving the conversation group here to allow the global
+                // NotificationIndicator component to continue receiving NewMessageReceived group
+                // events after navigating away from the detail page. Leaving the group here was
+                // causing loss of off-page notifications. Group membership will now be released
+                // when the conversation is completed (handled in NotificationIndicator) or via
+                // future explicit cleanup logic if needed.
+                // await _hubConnection.InvokeAsync("LeaveConversationGroup", ConversationId);
             }
             
             // Reset browser title

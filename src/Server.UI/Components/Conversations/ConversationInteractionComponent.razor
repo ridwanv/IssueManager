@@ -6,7 +6,7 @@
      ConversationDetails.Conversation.Mode == ConversationMode.Human &&
      !string.IsNullOrEmpty(ConversationDetails.Conversation.CurrentAgentId))
 {
-    <MessageInputComponent ConversationId="@(ConversationDetails.Conversation.Id.ToString())"
+    <MessageInputComponent ConversationId="@(ConversationDetails.Conversation.ConversationReference.ToString())"
                          OnMessageSent="HandleMessageSent"
                          Disabled="SendingMessage" />
 }

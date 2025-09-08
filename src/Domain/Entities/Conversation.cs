@@ -21,10 +21,14 @@ public class Conversation : BaseAuditableEntity, IMustHaveTenant
     public DateTime? CompletedAt { get; set; }
     public string? EscalationReason { get; set; }
     public string? ConversationSummary { get; set; }
+    public ResolutionCategory? ResolutionCategory { get; set; }
+    public string? ResolutionNotes { get; set; }
+    public string? ResolvedByAgentId { get; set; }
     public int MessageCount { get; set; } = 0;
     public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
     public string? ThreadId { get; set; } // For OpenAI Assistant API integration
     public int MaxTurns { get; set; } = 10; // Maximum turns to keep in memory
+    public string? ConversationChannelData { get; set; } // Full ConversationReference JSON for Bot Framework routing
     public string TenantId { get; set; } = default!;
 
     // Navigation properties

@@ -5,6 +5,7 @@
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation
 @using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Domain.Enums
 @using Microsoft.AspNetCore.SignalR.Client
 @using CleanArchitecture.Blazor.Server.UI.Hubs
 @using Microsoft.Extensions.Logging
@@ -317,7 +318,7 @@
         _processing = true;
         try
         {
-            var result = await Mediator.Send(new CompleteConversationCommand(conversation.ConversationReference, "Conversation completed by agent"));
+            var result = await Mediator.Send(new CompleteConversationCommand(conversation.ConversationReference, ResolutionCategory.Resolved, "Conversation completed by agent", true));
             
             if (result.Succeeded)
             {

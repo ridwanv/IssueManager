@@ -39,11 +39,30 @@ namespace Microsoft.BotBuilderSamples
         // Escalation state tracking
         public bool IsEscalated { get; set; } = false;
         public DateTime? EscalatedAt { get; set; }
-        public string? EscalationReason { get; set; }
-        public string? AssignedAgentId { get; set; }
+        public string EscalationReason { get; set; }
+        public string AssignedAgentId { get; set; }
         public bool IsHandoffPending { get; set; } = false;
         public DateTime? HandoffInitiatedAt { get; set; }
         public int? ConversationEntityId { get; set; } // Link to Conversation domain entity
+        
+        // Bot as Proxy agent handoff tracking
+        public string AgentName { get; set; }
+        public string CurrentAgentId { get; set; }
+        public DateTime? HandoffStartedAt { get; set; }
+        public DateTime? HandoffCompletedAt { get; set; }
+        
+        // Enhanced agent session tracking
+        public bool IsAgentActivelyHandling { get; set; } = false;
+        public DateTime? LastAgentActivity { get; set; }
+        public int AgentSessionTimeoutMinutes { get; set; } = 30; // Configurable timeout
+        public bool BotResponsesSuppressed { get; set; } = false;
+
+        // Agent handback tracking
+        public bool AgentRequestedHandback { get; set; } = false;
+        public DateTime? HandbackRequestedAt { get; set; }
+        public string HandbackReason { get; set; }
+        public bool IsHandbackGracePeriod { get; set; } = false;
+        public int HandbackGracePeriodMinutes { get; set; } = 2; // Time before bot resumes
         
         // Track conversation history
         public List<ConversationTurn> History = new List<ConversationTurn>();
@@ -162,7 +181,7 @@ namespace Microsoft.BotBuilderSamples
             return string.Empty;
         }
 
-        public List<ChatMessage> toMessages()
+        public List<ChatMessage> ToMessages()
         {
             var messages = History.Select<ConversationTurn, ChatMessage>((turn, index) =>
                 turn.Role == "assistant" ? (turn.ToolCalls != null ? new AssistantChatMessage(toolCalls: turn.ToolCalls) : new AssistantChatMessage(turn.Message)) :
@@ -174,6 +193,104 @@ namespace Microsoft.BotBuilderSamples
                 turn.Role == "system" ? new SystemChatMessage(turn.Message) :
                 new ToolChatMessage(turn.ToolCallId, turn.Message)).ToList();
             return messages;
+        }
+
+        // Agent session management helper methods
+        public bool ShouldBotRespond()
+        {
+            // Bot should not respond if agent is actively handling or during grace period
+            if (IsAgentActivelyHandling || BotResponsesSuppressed || IsHandbackGracePeriod)
+            {
+                return false;
+            }
+
+            // Check for agent session timeout
+            if (LastAgentActivity.HasValue)
+            {
+                var timeSinceLastActivity = DateTime.UtcNow - LastAgentActivity.Value;
+                if (timeSinceLastActivity.TotalMinutes > AgentSessionTimeoutMinutes)
+                {
+                    // Auto-timeout the agent session
+                    EndAgentSession("Agent session timeout");
+                    return true;
+                }
+                return false; // Agent still active within timeout
+            }
+
+            return true; // No active agent session
+        }
+
+        public void StartAgentSession(string agentId, string agentName = null)
+        {
+            IsAgentActivelyHandling = true;
+            CurrentAgentId = agentId;
+            AgentName = agentName ?? agentId;
+            LastAgentActivity = DateTime.UtcNow;
+            BotResponsesSuppressed = true;
+            
+            // Clear any previous handback state
+            AgentRequestedHandback = false;
+            HandbackRequestedAt = null;
+            HandbackReason = null;
+            IsHandbackGracePeriod = false;
+        }
+
+        public void UpdateAgentActivity()
+        {
+            if (IsAgentActivelyHandling)
+            {
+                LastAgentActivity = DateTime.UtcNow;
+            }
+        }
+
+        public void RequestHandback(string reason = null)
+        {
+            if (IsAgentActivelyHandling)
+            {
+                AgentRequestedHandback = true;
+                HandbackRequestedAt = DateTime.UtcNow;
+                HandbackReason = reason;
+                IsHandbackGracePeriod = true;
+            }
+        }
+
+        public void EndAgentSession(string reason = null)
+        {
+            IsAgentActivelyHandling = false;
+            BotResponsesSuppressed = false;
+            HandoffCompletedAt = DateTime.UtcNow;
+            
+            // Keep agent info for reference but clear active state
+            LastAgentActivity = DateTime.UtcNow;
+            
+            // Clear handback state
+            AgentRequestedHandback = false;
+            IsHandbackGracePeriod = false;
+        }
+
+        public bool IsAgentSessionTimedOut()
+        {
+            if (!IsAgentActivelyHandling || !LastAgentActivity.HasValue)
+                return false;
+
+            var timeSinceLastActivity = DateTime.UtcNow - LastAgentActivity.Value;
+            return timeSinceLastActivity.TotalMinutes > AgentSessionTimeoutMinutes;
+        }
+
+        public bool IsInHandbackGracePeriod()
+        {
+            if (!IsHandbackGracePeriod || !HandbackRequestedAt.HasValue)
+                return false;
+
+            var timeSinceHandbackRequest = DateTime.UtcNow - HandbackRequestedAt.Value;
+            if (timeSinceHandbackRequest.TotalMinutes > HandbackGracePeriodMinutes)
+            {
+                // Grace period expired, end it
+                IsHandbackGracePeriod = false;
+                return false;
+            }
+
+            return true;
         }
 
     }

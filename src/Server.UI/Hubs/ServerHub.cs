@@ -394,6 +394,38 @@ public class ServerHub : Hub<ISignalRHub>
     public async Task BroadcastNewMessageToAgents(string conversationId, object messageDto)
     {
         await Clients.Group($"Conversation_{conversationId}").NewMessageReceived(messageDto);
+
+        // Also broadcast legacy/global event for components not in the conversation group (e.g., NotificationIndicator)
+        try
+        {
+            string from = "User";
+            string content = string.Empty;
+            bool isFromAgent = false;
+
+            // Attempt to extract fields dynamically
+            if (messageDto is not null)
+            {
+                var type = messageDto.GetType();
+                var roleProp = type.GetProperty("Role");
+                var contentProp = type.GetProperty("Content");
+                var userNameProp = type.GetProperty("UserName");
+                var userIdProp = type.GetProperty("UserId");
+
+                var role = roleProp?.GetValue(messageDto) as string;
+                content = contentProp?.GetValue(messageDto) as string ?? string.Empty;
+                from = (userNameProp?.GetValue(messageDto) as string)
+                       ?? (userIdProp?.GetValue(messageDto) as string)
+                       ?? (string.Equals(role, "agent", StringComparison.OrdinalIgnoreCase) ? "Agent" : "User");
+                isFromAgent = string.Equals(role, "agent", StringComparison.OrdinalIgnoreCase);
+            }
+
+            await Clients.All.NewConversationMessage(conversationId, from, content, isFromAgent);
+        }
+        catch (Exception ex)
+        {
+            // Swallow: notification fan-out shouldn't break primary group delivery
+            Console.WriteLine($"[ServerHub] Failed to broadcast legacy NewConversationMessage: {ex.Message}");
+        }
     }
 
     public async Task BroadcastConversationStatusChanged(string conversationId, ConversationStatus status)

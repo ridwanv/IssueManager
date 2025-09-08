@@ -33,8 +33,17 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
         builder.Property(x => x.ConversationSummary)
             .HasMaxLength(2000);
 
+        builder.Property(x => x.ResolutionNotes)
+            .HasMaxLength(2000);
+
+        builder.Property(x => x.ResolvedByAgentId)
+            .HasMaxLength(100);
+
         builder.Property(x => x.ThreadId)
             .HasMaxLength(100);
+
+        builder.Property(x => x.ConversationChannelData)
+            .HasColumnType("TEXT"); // Store complete ConversationReference JSON
 
         builder.Property(x => x.TenantId)
             .HasMaxLength(50)
@@ -47,7 +56,9 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
         builder.HasIndex(x => x.Status);
         builder.HasIndex(x => x.Mode);
         builder.HasIndex(x => x.LastActivityAt);
+        builder.HasIndex(x => x.ResolutionCategory);
         builder.HasIndex(x => new { x.Status, x.Mode });
+        builder.HasIndex(x => new { x.Status, x.ResolutionCategory });
 
         // Configure relationships
         builder.HasMany(x => x.Messages)

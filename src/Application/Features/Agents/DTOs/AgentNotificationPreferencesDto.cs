@@ -41,7 +41,13 @@ public class AgentNotificationPreferencesDto
         public Mapping()
         {
             CreateMap<AgentNotificationPreferences, AgentNotificationPreferencesDto>();
-            CreateMap<AgentNotificationPreferencesDto, AgentNotificationPreferences>();
+            CreateMap<AgentNotificationPreferencesDto, AgentNotificationPreferences>()
+                .ForMember(dest => dest.ApplicationUser, opt => opt.Ignore())
+                .ForMember(dest => dest.Created, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.LastModified, opt => opt.Ignore())
+                .ForMember(dest => dest.LastModifiedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.DomainEvents, opt => opt.Ignore());
         }
     }
 }

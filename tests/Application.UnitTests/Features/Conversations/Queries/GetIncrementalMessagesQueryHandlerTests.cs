@@ -1,3 +1,8 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using AutoMapper;
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
 using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
@@ -36,8 +41,8 @@ public class GetIncrementalMessagesQueryHandlerTests
         {
             new ConversationMessage
             {
-                Id = Guid.NewGuid(),
-                ConversationId = Guid.Parse(conversationId),
+                Id = 1, // Use int for ConversationMessage.Id
+                ConversationId = 1, // Use int for ConversationId
                 Content = "New message",
                 Timestamp = DateTime.UtcNow.AddMinutes(-5),
                 Role = "user"

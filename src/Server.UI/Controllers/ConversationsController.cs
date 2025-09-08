@@ -4,12 +4,15 @@ using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.Escal
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AddMessage;
+using CleanArchitecture.Blazor.Domain.Enums;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetEscalatedConversations;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetMessages;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAllConversations;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationById;
 using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 using CleanArchitecture.Blazor.Application.Common.Models;
+using Microsoft.AspNetCore.SignalR;
+using CleanArchitecture.Blazor.Server.UI.Hubs;
 
 namespace CleanArchitecture.Blazor.Server.UI.Controllers;
 
@@ -19,11 +22,16 @@ public class ConversationsController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ILogger<ConversationsController> _logger;
+    private readonly IHubContext<ServerHub, ISignalRHub> _hubContext;
 
-    public ConversationsController(IMediator mediator, ILogger<ConversationsController> logger)
+    public ConversationsController(
+        IMediator mediator, 
+        ILogger<ConversationsController> logger,
+        IHubContext<ServerHub, ISignalRHub> hubContext)
     {
         _mediator = mediator;
         _logger = logger;
+        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -365,7 +373,7 @@ public class ConversationsController : ControllerBase
     {
         try
         {
-            var command = new CompleteConversationCommand(conversationId, request.Summary);
+            var command = new CompleteConversationCommand(conversationId, ResolutionCategory.Resolved, request.Summary ?? "Completed via API", true);
             var result = await _mediator.Send(command);
             
             if (!result.Succeeded)
@@ -403,6 +411,26 @@ public class ConversationsController : ControllerBase
 
             _logger.LogInformation("Message added to conversation {ConversationId}. Message ID: {MessageId}", 
                 request.BotFrameworkConversationId, result.Data);
+
+            // Broadcast real-time notification so global NotificationIndicator & other listeners update
+            try
+            {
+                var fromName = request.UserName ?? request.UserId ?? (request.Role == "agent" ? "Agent" : "User");
+                var content = request.Content ?? string.Empty;
+                var isFromAgent = string.Equals(request.Role, "agent", StringComparison.OrdinalIgnoreCase);
+                await _hubContext.Clients.All.NewConversationMessage(
+                    request.BotFrameworkConversationId,
+                    fromName,
+                    content,
+                    isFromAgent
+                );
+                _logger.LogInformation("Broadcasted NewConversationMessage for {ConversationId}", request.BotFrameworkConversationId);
+            }
+            catch (Exception broadcastEx)
+            {
+                _logger.LogError(broadcastEx, "Failed to broadcast NewConversationMessage for {ConversationId}", request.BotFrameworkConversationId);
+                // Do not fail the API on broadcast errors
+            }
             
             return Ok(result);
         }
@@ -475,6 +503,75 @@ public class ConversationsController : ControllerBase
     }
 
     /// <summary>
+    /// Notify an agent of a user message during an active conversation handoff
+    /// Used by the bot to route user messages to agents in real-time
+    /// </summary>
+    /// <param name="conversationId">Bot Framework conversation ID</param>
+    /// <param name="request">Agent notification details</param>
+    /// <returns>Success result</returns>
+    [HttpPost("{conversationId}/notify-agent")]
+    public async Task<ActionResult<Result>> NotifyAgentOfUserMessage(
+        string conversationId, 
+        [FromBody] AgentNotificationRequest request)
+    {
+        try
+        {
+            _logger.LogInformation("Notifying agent {AgentId} of user message in conversation {ConversationId}", 
+                request.AgentId, conversationId);
+
+            // First, store the user message in the conversation history
+            var messageDto = new ConversationMessageCreateDto
+            {
+                BotFrameworkConversationId = conversationId,
+                Role = "user",
+                Content = request.UserMessage,
+                UserId = request.UserId,
+                UserName = request.UserName,
+                ChannelId = request.ChannelId,
+                Timestamp = request.Timestamp
+            };
+
+            var addMessageCommand = new AddConversationMessageCommand(messageDto);
+            var messageResult = await _mediator.Send(addMessageCommand);
+
+            if (!messageResult.Succeeded)
+            {
+                _logger.LogError("Failed to store user message: {Error}", messageResult.ErrorMessage);
+                return BadRequest(Result.Failure("Failed to store user message"));
+            }
+
+            // Send real-time SignalR notification to agents
+            try
+            {
+                await _hubContext.Clients.All.NewConversationMessage(
+                    conversationId,
+                    request.UserName ?? request.UserId ?? "Unknown User",
+                    request.UserMessage,
+                    false // isFromAgent = false since this is from a user
+                );
+
+                _logger.LogInformation("SignalR notification sent for conversation {ConversationId}", conversationId);
+            }
+            catch (Exception signalREx)
+            {
+                _logger.LogError(signalREx, "Failed to send SignalR notification for conversation {ConversationId}", conversationId);
+                // Don't fail the entire operation if SignalR notification fails
+            }
+
+            _logger.LogInformation("User message from conversation {ConversationId} successfully routed to agent {AgentId}. Message ID: {MessageId}", 
+                conversationId, request.AgentId, messageResult.Data);
+
+            return Ok(Result.Success());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error notifying agent {AgentId} of user message in conversation {ConversationId}", 
+                request.AgentId, conversationId);
+            return StatusCode(500, Result.Failure("An error occurred while notifying the agent"));
+        }
+    }
+
+    /// <summary>
     /// Test endpoint to save agent preferences - FOR DEVELOPMENT ONLY
     /// </summary>
     [HttpPost("test-preferences")]
@@ -513,6 +610,80 @@ public class ConversationsController : ControllerBase
             return StatusCode(500, $"An error occurred while saving test preferences: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Test endpoint to trigger a notification (for debugging)
+    /// </summary>
+    [HttpPost("test-notification")]
+    public async Task<ActionResult<Result>> TestNotification()
+    {
+        try
+        {
+            _logger.LogInformation("Test notification endpoint called");
+
+            // Send a test SignalR notification
+            await _hubContext.Clients.All.NewConversationMessage(
+                "test-conversation-123",
+                "Test User",
+                "This is a test message to verify notifications work",
+                false // isFromAgent = false
+            );
+
+            _logger.LogInformation("Test SignalR notification sent");
+            return Ok(Result.Success());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending test notification");
+            return StatusCode(500, Result.Failure("Error sending test notification"));
+        }
+    }
+
+    /// <summary>
+    /// Test endpoint to trigger conversation assignment (for debugging)
+    /// </summary>
+    [HttpPost("test-assign")]
+    public async Task<ActionResult<Result>> TestAssign([FromBody] TestAssignRequest request)
+    {
+        try
+        {
+            // Get current user ID from claims
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                        ?? User.FindFirst("sub")?.Value
+                        ?? User.Identity?.Name
+                        ?? "test-user-123"; // fallback for testing
+            
+            var agentId = request.AgentId ?? userId; // Use current user as agent if not specified
+            var conversationId = request.ConversationId ?? "test-conversation-123";
+            
+            _logger.LogInformation("Test assign endpoint called for conversation {ConversationId} to agent {AgentId} (current user: {CurrentUserId})", 
+                conversationId, agentId, userId);
+
+            // Send a test SignalR conversation assignment
+            await _hubContext.Clients.All.ConversationAssigned(
+                conversationId,
+                agentId,
+                User.Identity?.Name ?? "Test Agent"
+            );
+
+            _logger.LogInformation("Test SignalR conversation assignment sent");
+            return Ok(Result.Success());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending test assignment");
+            return StatusCode(500, Result.Failure("Error sending test assignment"));
+        }
+    }
+}
+
+/// <summary>
+/// Request model for test assignment
+/// </summary>
+public class TestAssignRequest
+{
+    public string? ConversationId { get; set; }
+    public string? AgentId { get; set; }
 }
 
 /// <summary>
@@ -548,6 +719,31 @@ public class CompleteConversationRequest
 public class UpdateStatusRequest
 {
     public string Status { get; set; } = default!;
+}
+
+/// <summary>
+/// Request model for agent notifications during conversation handoff
+/// </summary>
+public class AgentNotificationRequest
+{
+    public string AgentId { get; set; } = default!;
+    public string UserMessage { get; set; } = default!;
+    public string? UserId { get; set; }
+    public string? UserName { get; set; }
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string? ChannelId { get; set; }
+    public NotificationUrgency Urgency { get; set; } = NotificationUrgency.Normal;
+}
+
+/// <summary>
+/// Urgency levels for agent notifications
+/// </summary>
+public enum NotificationUrgency
+{
+    Low,
+    Normal,
+    High,
+    Critical
 }
 
 /// <summary>

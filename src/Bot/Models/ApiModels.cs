@@ -112,6 +112,55 @@ public class Result<T>
 }
 
 /// <summary>
+/// Non-generic result wrapper for API responses
+/// </summary>
+public class Result
+{
+    public bool Succeeded { get; set; }
+    public string ErrorMessage { get; set; } = string.Empty;
+    public List<string> ErrorMessages { get; set; } = new();
+    public int ErrorCode { get; set; }
+
+    public static Task<Result> SuccessAsync(string message = "")
+    {
+        return Task.FromResult(new Result
+        {
+            Succeeded = true,
+            ErrorMessage = message
+        });
+    }
+
+    public static Task<Result> FailureAsync(string errorMessage, int errorCode = 400)
+    {
+        return Task.FromResult(new Result
+        {
+            Succeeded = false,
+            ErrorMessage = errorMessage,
+            ErrorCode = errorCode
+        });
+    }
+
+    public static Result Success(string message = "")
+    {
+        return new Result
+        {
+            Succeeded = true,
+            ErrorMessage = message
+        };
+    }
+
+    public static Result Failure(string errorMessage, int errorCode = 400)
+    {
+        return new Result
+        {
+            Succeeded = false,
+            ErrorMessage = errorMessage,
+            ErrorCode = errorCode
+        };
+    }
+}
+
+/// <summary>
 /// Issue details DTO
 /// </summary>
 public class IssueDto
@@ -234,4 +283,16 @@ public class ConversationMessageCreateDto
     public string? UserName { get; set; }
     public string? ChannelId { get; set; }
     public DateTime? Timestamp { get; set; }
+    public string? ConversationChannelData { get; set; } // Full ConversationReference JSON for Bot Framework routing
+}
+
+/// <summary>
+/// Urgency levels for agent notifications
+/// </summary>
+public enum NotificationUrgency
+{
+    Low,
+    Normal,
+    High,
+    Critical
 }
