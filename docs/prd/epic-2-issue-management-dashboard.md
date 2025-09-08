@@ -30,19 +30,21 @@ so that **I can manage issues effectively and track resolution progress**.
 5. Internal notes section for support team communication and resolution tracking
 6. Audit trail showing all changes with timestamps and responsible staff members
 
-## Story 2.3: Bulk Operations & Workflow Management
+## Story 2.3: Issue Contact Management & Linking
 
-As a **support team lead**,
-I want **to perform bulk operations on multiple issues and manage team assignments**,
-so that **I can efficiently distribute workload and handle high-volume periods**.
+As a **support staff member**,
+I want **to create new contacts or link existing contacts to issues during issue creation and management**,
+so that **I can maintain complete contact information and establish proper relationships between contacts and their reported issues**.
 
 ### Acceptance Criteria
-1. Multi-select functionality for choosing multiple issues from the main list
-2. Bulk status updates, priority changes, and staff assignment operations
-3. Team workload visibility showing issue distribution across staff members
-4. Quick action buttons for common operations (assign to self, mark in progress, etc.)
-5. Confirmation dialogs for bulk operations with summary of changes being made
-6. Undo functionality for recent bulk operations to prevent accidental changes
+1. Contact selection/creation during issue creation process with dropdown showing existing contacts and "Create New Contact" option
+2. Search existing contacts by name, email, or phone number with real-time filtering in contact selection interface  
+3. Create new contact inline during issue creation without leaving the issue creation workflow
+4. Edit contact information directly from issue detail view with navigation to contact management pages
+5. Display complete contact information (name, email, phone, preferred language) in issue detail view
+6. Link multiple issues to the same contact with proper relationship management and contact history
+7. Contact validation ensuring required fields and proper data format (email validation, phone number formatting)
+8. Update issue's contact assignment with audit trail logging for contact changes
 
 ## Story 2.4: Basic Analytics & Reporting
 
