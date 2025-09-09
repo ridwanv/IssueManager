@@ -2,6 +2,7 @@
 using MediatR;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.EscalateConversation;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent;
+using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.TransferConversation;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AddMessage;
 using CleanArchitecture.Blazor.Domain.Enums;
@@ -362,6 +363,43 @@ public class ConversationsController : ControllerBase
         {
             _logger.LogError(ex, "Error assigning agent to conversation {ConversationId}", conversationId);
             return StatusCode(500, "An error occurred while assigning the agent");
+        }
+    }
+
+    /// <summary>
+    /// Transfer a conversation to another agent
+    /// Used by agents to transfer active conversations
+    /// </summary>
+    /// <param name="conversationId">Conversation ID (supports both string ConversationReference and int/Guid ID)</param>
+    /// <param name="request">Transfer request</param>
+    /// <returns>Success result</returns>
+    [HttpPost("{conversationId}/transfer")]
+    public async Task<ActionResult<Result<bool>>> TransferConversation(string conversationId, [FromBody] TransferConversationRequest request)
+    {
+        try
+        {
+            var command = new TransferConversationCommand(
+                conversationId,
+                request.ToAgentId,
+                request.Reason,
+                request.ForceTransfer);
+            
+            var result = await _mediator.Send(command);
+            
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            
+            _logger.LogInformation("Conversation {ConversationId} transferred successfully to agent {AgentId}", 
+                conversationId, request.ToAgentId);
+            
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error transferring conversation {ConversationId}", conversationId);
+            return StatusCode(500, "An error occurred while transferring the conversation");
         }
     }
 
@@ -776,6 +814,16 @@ public class AgentNotificationRequest
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public string? ChannelId { get; set; }
     public NotificationUrgency Urgency { get; set; } = NotificationUrgency.Normal;
+}
+
+/// <summary>
+/// Request model for transferring conversations between agents
+/// </summary>
+public class TransferConversationRequest
+{
+    public string ToAgentId { get; set; } = default!;
+    public string? Reason { get; set; }
+    public bool ForceTransfer { get; set; } = false;
 }
 
 /// <summary>

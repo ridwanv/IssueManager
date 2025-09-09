@@ -35,6 +35,9 @@ public interface ISignalRHub
     // Agent escalation methods
     Task ConversationEscalated(string conversationId, string reason, string customerPhoneNumber);
     Task ConversationAssigned(string conversationId, string agentId, string agentName);
+    Task ConversationTransferred(string conversationId, string? fromAgentId, string toAgentId, string fromAgentName, string toAgentName);
+    Task ConversationTransferredFrom(string conversationId, string toAgentId, string toAgentName);
+    Task ConversationTransferredTo(string conversationId, string? fromAgentId, string fromAgentName);
     Task ConversationCompleted(string conversationId, string agentId);
     Task AgentStatusChanged(string agentId, string status);
     Task NewConversationMessage(string conversationId, string from, string message, bool isFromAgent);

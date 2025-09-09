@@ -1,0 +1,241 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using MudBlazor
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetTransferEligibleAgents
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.TransferConversation
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Domain.Enums
+@using static CleanArchitecture.Blazor.Application.Common.Security.Permissions
+@inject IMediator Mediator
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IPermissionService PermissionService
+
+<div class="agent-transfer-section">
+    @if (_canTransfer && _conversation?.Status == ConversationStatus.Active)
+    {
+        <div>
+            <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Transfer Conversation"]</MudText>
+            
+            @if (_availableAgents?.Any() == true)
+            {
+                <div class="d-flex align-center gap-2 mt-2">
+                    <MudSelect T="string" 
+                              @bind-Value="_selectedAgentId" 
+                              Label="@L["Select Agent"]"
+                              Dense="true"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              TransformOrigin="Origin.TopCenter"
+                              Class="flex-1">
+                        @foreach (var agent in _availableAgents)
+                        {
+                            <MudSelectItem Value="@agent.ApplicationUserId">
+                                <div class="d-flex align-center justify-space-between">
+                                    <div>
+                                        <MudText Typo="Typo.body2">
+                                            @(agent.DisplayName ?? agent.UserName ?? "Unknown Agent")
+                                        </MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @agent.Status • @agent.ActiveConversationCount/@agent.MaxConcurrentConversations conversations
+                                        </MudText>
+                                    </div>
+                                    <div class="d-flex align-center gap-1">
+                                        @if (agent.CanTakeConversations)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                        }
+                                        else
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                        }
+                                        <MudProgressLinear Color="@GetWorkloadColor(agent.WorkloadPercentage)" 
+                                                          Value="@agent.WorkloadPercentage" 
+                                                          Size="Size.Small"
+                                                          Style="width: 40px;" />
+                                    </div>
+                                </div>
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                    
+                    <MudButton Color="Color.Primary" 
+                              Variant="Variant.Filled" 
+                              StartIcon="@Icons.Material.Filled.SwapHoriz"
+                              OnClick="ShowTransferDialog"
+                              Disabled="@(string.IsNullOrEmpty(_selectedAgentId) || _transferring)"
+                              Size="Size.Small">
+                        @if (_transferring)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        @L["Transfer"]
+                    </MudButton>
+                </div>
+            }
+            else if (_loadingAgents)
+            {
+                <div class="d-flex align-center gap-2 mt-2">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Loading available agents..."]</MudText>
+                </div>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                    @L["No agents available for transfer at this time."]
+                </MudAlert>
+            }
+        </div>
+    }
+    else if (!_canTransfer)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            @L["You don't have permission to transfer conversations."]
+        </MudText>
+    }
+    else if (_conversation?.Status != ConversationStatus.Active)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            @L["Only active conversations can be transferred."]
+        </MudText>
+    }
+</div>
+
+@code {
+    [Parameter] public ConversationDto? Conversation { get; set; }
+    [Parameter] public EventCallback<bool> OnTransferCompleted { get; set; }
+    
+    private ConversationDto? _conversation;
+    private List<AgentDto>? _availableAgents;
+    private string? _selectedAgentId;
+    private bool _canTransfer;
+    private bool _loadingAgents;
+    private bool _transferring;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _canTransfer = await PermissionService.HasPermissionAsync(Conversations.Transfer);
+            Console.WriteLine($"[AgentTransferDropdown] Transfer permission check result: {_canTransfer}");
+            Console.WriteLine($"[AgentTransferDropdown] Permission string: {Conversations.Transfer}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AgentTransferDropdown] Permission check failed: {ex.Message}");
+            _canTransfer = false;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Conversation != _conversation)
+        {
+            _conversation = Conversation;
+            _selectedAgentId = null;
+            
+            if (_canTransfer && _conversation != null && _conversation.Status == ConversationStatus.Active)
+            {
+                await LoadAvailableAgents();
+            }
+        }
+    }
+
+    private async Task LoadAvailableAgents()
+    {
+        if (_conversation == null) return;
+        
+        _loadingAgents = true;
+        StateHasChanged();
+        
+        try
+        {
+            var query = new GetTransferEligibleAgentsQuery(_conversation.ConversationReference, _conversation.CurrentAgentId);
+            var result = await Mediator.Send(query);
+            
+            if (result.Succeeded)
+            {
+                _availableAgents = result.Data;
+                // Auto-select the first available agent if any
+                var firstAvailable = _availableAgents?.FirstOrDefault(a => a.CanTakeConversations);
+                if (firstAvailable != null)
+                {
+                    _selectedAgentId = firstAvailable.ApplicationUserId;
+                }
+            }
+            else
+            {
+                Snackbar.Add(result.ErrorMessage, Severity.Error);
+                _availableAgents = new List<AgentDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(L["Error loading available agents: {0}", ex.Message], Severity.Error);
+            _availableAgents = new List<AgentDto>();
+        }
+        finally
+        {
+            _loadingAgents = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowTransferDialog()
+    {
+        if (string.IsNullOrEmpty(_selectedAgentId) || _conversation == null) return;
+        
+        var selectedAgent = _availableAgents?.FirstOrDefault(a => a.ApplicationUserId == _selectedAgentId);
+        if (selectedAgent == null) return;
+        
+        var parameters = new DialogParameters<TransferConfirmationDialog>
+        {
+            { x => x.ConversationId, _conversation.ConversationReference },
+            { x => x.ConversationTitle, $"Conversation {_conversation.ConversationReference}" },
+            { x => x.ToAgentId, _selectedAgentId },
+            { x => x.ToAgentName, selectedAgent.DisplayName ?? selectedAgent.UserName ?? "Unknown Agent" },
+            { x => x.FromAgentName, _conversation.CurrentAgentName ?? "System" },
+            { x => x.CanForceTransfer, selectedAgent.CanTakeConversations == false }
+        };
+        
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true
+        };
+        
+        var dialog = DialogService.Show<TransferConfirmationDialog>(L["Transfer Conversation"], parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled && result.Data is bool transferred && transferred)
+        {
+            await OnTransferCompleted.InvokeAsync(true);
+            _selectedAgentId = null;
+            await LoadAvailableAgents(); // Refresh the list
+        }
+    }
+
+    private Color GetWorkloadColor(double workloadPercentage)
+    {
+        if (workloadPercentage < 50)
+            return Color.Success;
+        else if (workloadPercentage < 80)
+            return Color.Warning;
+        else
+            return Color.Error;
+    }
+}
+
+<style>
+    .agent-transfer-section {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--mud-palette-divider);
+    }
+    
+    .mud-progress-linear {
+        border-radius: 2px;
+    }
+</style>

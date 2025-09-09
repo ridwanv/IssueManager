@@ -85,5 +85,8 @@ public static partial class Permissions
         
         [Description("Export conversation data")]
         public const string Export = "Permissions.Conversations.Export";
+        
+        [Description("Transfer conversations between agents")]
+        public const string Transfer = "Permissions.Conversations.Transfer";
     }
 } 

@@ -130,7 +130,8 @@ public class ApplicationDbContextInitializer
             var claim = new Claim(ApplicationClaimTypes.Permission, permission);
             await _roleManager.AddClaimAsync(administratorRole, claim);
 
-            if (permission.StartsWith("Permissions.Products"))
+            if (permission.StartsWith("Permissions.Products") || 
+                permission.StartsWith("Permissions.Conversations"))
             {
                 await _roleManager.AddClaimAsync(userRole, claim);
             }

@@ -169,6 +169,10 @@
                                         </MudText>
                                     </div>
                                 }
+                                
+                                <!-- Agent Transfer Controls -->
+                                <AgentTransferDropdown Conversation="@conversationDetails.Conversation" 
+                                                      OnTransferCompleted="HandleTransferCompleted" />
                             </div>
                         </MudCardContent>
                     </MudCard>
@@ -964,6 +968,17 @@
         }
         
         GC.SuppressFinalize(this);
+    }
+    
+    private async Task HandleTransferCompleted(bool transferred)
+    {
+        if (transferred)
+        {
+            // Refresh the conversation details to show the updated assignment
+            await LoadConversation();
+            StateHasChanged();
+            Snackbar.Add(L["Conversation has been transferred successfully"], Severity.Success);
+        }
     }
 }
 

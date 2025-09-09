@@ -1,0 +1,142 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.TransferConversation
+@using MudBlazor
+@inject IMediator Mediator
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" />
+            <MudText Typo="Typo.h6">@L["Transfer Conversation"]</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <div class="d-flex flex-column gap-4">
+            <MudAlert Severity="Severity.Info" Dense="true">
+                @L["You are about to transfer this conversation to another agent."]
+            </MudAlert>
+            
+            <div>
+                <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Transfer Details"]</MudText>
+                <div class="d-flex flex-column gap-2">
+                    <div class="d-flex align-center gap-2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Conversation"]:</MudText>
+                        <MudText Typo="Typo.body2">@ConversationTitle</MudText>
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["From"]:</MudText>
+                        <MudText Typo="Typo.body2">@FromAgentName</MudText>
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["To"]:</MudText>
+                        <MudText Typo="Typo.body2">@ToAgentName</MudText>
+                    </div>
+                </div>
+            </div>
+            
+            @if (!_targetAgentCanTakeConversations && CanForceTransfer)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">
+                    <div class="d-flex flex-column gap-2">
+                        <MudText Typo="Typo.body2">
+                            @L["The target agent is not available or at maximum capacity."]
+                        </MudText>
+                        <MudCheckBox @bind-Value="_forceTransfer" 
+                                    Label="@L["Force transfer anyway"]"
+                                    Color="Color.Warning" />
+                    </div>
+                </MudAlert>
+            }
+            
+            <MudTextField @bind-Value="_reason"
+                         Label="@L["Transfer Reason (Optional)"]"
+                         Placeholder="@L["Why are you transferring this conversation?"]"
+                         Lines="3"
+                         Variant="Variant.Outlined"
+                         MaxLength="500"
+                         Counter="500" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Secondary">@L["Cancel"]</MudButton>
+        <MudButton OnClick="TransferConversation" 
+                  Color="Color.Primary" 
+                  Variant="Variant.Filled"
+                  Disabled="@(_transferring || (!_targetAgentCanTakeConversations && CanForceTransfer && !_forceTransfer))"
+                  StartIcon="@Icons.Material.Filled.SwapHoriz">
+            @if (_transferring)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @L["Transfer Conversation"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public string ConversationId { get; set; } = string.Empty;
+    [Parameter] public string ConversationTitle { get; set; } = string.Empty;
+    [Parameter] public string ToAgentId { get; set; } = string.Empty;
+    [Parameter] public string ToAgentName { get; set; } = string.Empty;
+    [Parameter] public string FromAgentName { get; set; } = string.Empty;
+    [Parameter] public bool CanForceTransfer { get; set; }
+    
+    private string _reason = string.Empty;
+    private bool _forceTransfer;
+    private bool _transferring;
+    private bool _targetAgentCanTakeConversations = true;
+
+    protected override void OnInitialized()
+    {
+        _targetAgentCanTakeConversations = !CanForceTransfer;
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task TransferConversation()
+    {
+        if (_transferring) return;
+        
+        _transferring = true;
+        StateHasChanged();
+        
+        try
+        {
+            var command = new TransferConversationCommand(
+                ConversationId,
+                ToAgentId,
+                string.IsNullOrWhiteSpace(_reason) ? null : _reason.Trim(),
+                _forceTransfer
+            );
+            
+            var result = await Mediator.Send(command);
+            
+            if (result.Succeeded)
+            {
+                Snackbar.Add(L["Conversation successfully transferred to {0}", ToAgentName], Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                Snackbar.Add(L["Transfer failed: {0}", result.ErrorMessage], Severity.Error);
+                MudDialog.Close(DialogResult.Ok(false));
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(L["Error transferring conversation: {0}", ex.Message], Severity.Error);
+            MudDialog.Close(DialogResult.Ok(false));
+        }
+        finally
+        {
+            _transferring = false;
+            StateHasChanged();
+        }
+    }
+}

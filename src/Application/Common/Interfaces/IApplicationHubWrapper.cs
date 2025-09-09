@@ -9,6 +9,7 @@ public interface IApplicationHubWrapper
     // Agent escalation methods
     Task BroadcastConversationEscalated(string conversationId, string reason, string customerPhoneNumber);
     Task BroadcastConversationAssigned(string conversationId, string agentId, string agentName);
+    Task BroadcastConversationTransferred(string conversationId, string? fromAgentId, string toAgentId, string fromAgentName, string toAgentName);
     Task BroadcastConversationCompleted(string conversationId, string agentId);
     Task BroadcastAgentStatusChanged(string agentId, string status);
     Task BroadcastNewConversationMessage(string conversationId, string from, string message, bool isFromAgent);
