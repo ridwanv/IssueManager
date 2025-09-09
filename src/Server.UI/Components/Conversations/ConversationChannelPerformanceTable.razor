@@ -1,0 +1,56 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationPerformanceStats
+@using Microsoft.Extensions.Localization
+@using MudBlazor
+
+@inject IStringLocalizer<ConversationChannelPerformanceTable> L
+
+<MudSimpleTable Dense="true" Hover="true">
+    <thead>
+        <tr>
+            <th>@L["Channel"]</th>
+            <th>@L["Total"]</th>
+            <th>@L["Avg Resolution Time"]</th>
+            <th>@L["Avg Sentiment"]</th>
+            <th>@L["Escalation Rate"]</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var channel in Channels.OrderByDescending(c => c.TotalConversations))
+        {
+            <tr>
+                <td>@channel.Channel</td>
+                <td>@channel.TotalConversations</td>
+                <td>@FormatDuration(TimeSpan.FromHours(channel.AverageResolutionHours))</td>
+                <td>
+                    <MudChip T="string" Color="@GetSentimentColor(channel.AverageSentimentScore)" Size="MudBlazor.Size.Small">
+                        @channel.AverageSentimentScore.ToString("F2")
+                    </MudChip>
+                </td>
+                <td>@channel.EscalationRateFormatted</td>
+            </tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    [Parameter] public List<ConversationChannelPerformanceDto> Channels { get; set; } = default!;
+
+    private Color GetSentimentColor(double sentiment)
+    {
+        return sentiment switch
+        {
+            >= 0.5 => Color.Success,
+            >= 0.0 => Color.Warning,
+            _ => Color.Error
+        };
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalDays >= 1)
+            return $"{duration.TotalDays:F1}d";
+        if (duration.TotalHours >= 1)
+            return $"{duration.TotalHours:F1}h";
+        return $"{duration.TotalMinutes:F0}m";
+    }
+}

@@ -44,7 +44,7 @@ public partial class IssueConversationTabComponent : ComponentBase, IAsyncDispos
         _loading = true;
         try
         {
-            var result = await Mediator.Send(new GetConversationByIdQuery(ConversationId.Value.ToString()));
+            var result = await Mediator.Send(new GetConversationByIdQuery(ConversationId.Value,null));
             
             if (result.Succeeded)
             {

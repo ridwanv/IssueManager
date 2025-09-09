@@ -46,13 +46,11 @@ else
         return Task.CompletedTask;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_shouldRender && Chart != null)
-        {
-            await Chart.RenderAsync();
-            _shouldRender = false;
-        }
+        // Let ApexChart handle its own rendering lifecycle
+        // Manual Chart.RenderAsync() calls can cause race conditions and NullReferenceException
+        return Task.CompletedTask;
     }
 
     private void SetupChartOptions()

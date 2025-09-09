@@ -1,0 +1,509 @@
+﻿@page "/agent/past-conversations"
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetMyPastConversations
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Server.UI.Components.Shared
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
+@attribute [Authorize]
+@inject IMediator Mediator
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject SignalRConnectionService SignalRService
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+
+<PageTitle>@L["Past Conversations"]</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="relative">
+    <div class="d-flex flex-column flex-grow-1 gap-4">
+        <div class="d-flex align-center justify-space-between">
+            <div class="d-flex align-center gap-4">
+                <MudIcon Icon="@Icons.Material.Filled.History" Style="font-size:2rem;" />
+                <MudText Typo="Typo.h5">@L["Past Conversations"]</MudText>
+                @if (conversations?.TotalItems > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary">
+                        @conversations.TotalItems @(conversations.TotalItems == 1 ? L["conversation"] : L["conversations"])
+                    </MudChip>
+                }
+            </div>
+            <div class="d-flex align-center gap-2">
+                <MudTextField @bind-Value="searchString"
+                             Placeholder="@L["Search past conversations..."]"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             IconSize="Size.Medium"
+                             Immediate="true"
+                             DebounceInterval="300"
+                             OnDebounceIntervalElapsed="OnSearch"
+                             Class="flex-grow-0"
+                             Style="min-width: 300px;" />
+@*                 <MudSelect Value="selectedStatus"
+                          Label="@L["Status"]"
+                          Class="flex-grow-0"
+                          Style="min-width: 150px;"
+                          ValueChanged="@((ConversationStatus? value) => OnStatusValueChanged(value))">
+                    <MudSelectItem Value="@((ConversationStatus?)null)">@L["All Past"]</MudSelectItem>
+                    <MudSelectItem Value="ConversationStatus.Completed">@L["Completed"]</MudSelectItem>
+                    <MudSelectItem Value="ConversationStatus.Abandoned">@L["Abandoned"]</MudSelectItem>
+                    <MudSelectItem Value="ConversationStatus.Archived">@L["Archived"]</MudSelectItem>
+                </MudSelect> *@
+                <MudDateRangePicker @bind-DateRange="dateRange"
+                                   Label="@L["Date Range"]"
+                                   Class="flex-grow-0"
+                                   Style="min-width: 250px;"
+                                   OnClosed="OnDateRangeChanged" />
+            </div>
+        </div>
+
+        @if (loading)
+        {
+            <div class="d-flex justify-center align-center" style="height: 200px;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else
+        {
+            <MudDataGrid @ref="dataGrid"
+                        T="ConversationDto"
+                        ServerData="@(new Func<GridState<ConversationDto>, Task<GridData<ConversationDto>>>(ServerReload))"
+                        SortMode="SortMode.Single"
+                        Filterable="true"
+                        Dense="true"
+                        Hover="true"
+                        Striped="true"
+                        FixedHeader="true"
+                        Height="600px"
+                        Class="mud-table-container">
+                <Columns>
+                    <PropertyColumn Property="x => x.ConversationReference" 
+                                  Title="@L["Conversation ID"]"
+                                  Sortable="true"
+                                  Filterable="true">
+                        <CellTemplate>
+                            <MudText Typo="Typo.body2" Class="font-weight-medium">
+                                @context.Item.ConversationReference
+                            </MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    
+                    <PropertyColumn Property="x => x.UserName" 
+                                  Title="@L["User"]"
+                                  Sortable="true"
+                                  Filterable="true">
+                        <CellTemplate>
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                                <MudText Typo="Typo.body2">
+                                    @(context.Item.UserName ?? context.Item.UserId ?? L["Unknown"])
+                                </MudText>
+                            </div>
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Property="x => x.Status" 
+                                  Title="@L["Status"]"
+                                  Sortable="true"
+                                  Filterable="false">
+                        <CellTemplate>
+                            <MudChip T="string" Size="Size.Small" 
+                                    Color="@GetStatusColor(context.Item.Status)"
+                                    Variant="Variant.Filled">
+                                @context.Item.Status
+                            </MudChip>
+                        </CellTemplate>
+                    </PropertyColumn>
+
+
+                    <PropertyColumn Property="x => x.CompletedAt" 
+                                  Title="@L["Completed Date"]"
+                                  Sortable="true"
+                                  Filterable="false">
+                        <CellTemplate>
+                            @if (context.Item.CompletedAt.HasValue)
+                            {
+                                <MudText Typo="Typo.body2">
+                                    @context.Item.CompletedAt.Value.ToString("MMM dd, yyyy")
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @context.Item.CompletedAt.Value.ToString("HH:mm")
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @L["Not specified"]
+                                </MudText>
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Property="x => x.Duration" 
+                                  Title="@L["Duration"]"
+                                  Sortable="true"
+                                  Filterable="false">
+                        <CellTemplate>
+                            @if (context.Item.Duration.TotalMinutes > 0)
+                            {
+                                <MudText Typo="Typo.body2">
+                                    @FormatDuration(context.Item.Duration)
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @L["Unknown"]
+                                </MudText>
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Property="x => x.MessageCount" 
+                                  Title="@L["Messages"]"
+                                  Sortable="true"
+                                  Filterable="false">
+                        <CellTemplate>
+                            <MudText Typo="Typo.body2" Class="text-center">
+                                @context.Item.MessageCount
+                            </MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Property="x => x.ConversationSummary" 
+                                  Title="@L["Summary"]"
+                                  Sortable="false"
+                                  Filterable="true">
+                        <CellTemplate>
+                            @if (!string.IsNullOrEmpty(context.Item.ConversationSummary))
+                            {
+                                <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 200px;" Title="@context.Item.ConversationSummary">
+                                    @context.Item.ConversationSummary
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @L["No summary"]
+                                </MudText>
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <TemplateColumn Title="@L["Actions"]" Sortable="false" Filterable="false">
+                        <CellTemplate>
+                            <div class="d-flex gap-1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                              Size="Size.Small"
+                                               OnClick="@(() => ViewConversation(context.Item.ConversationReference))"
+                                              Title="@L["View conversation"]" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                              Size="Size.Small"
+                                              Title="@L["Export conversation"]" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Analytics"
+                                              Size="Size.Small"
+                                              Color="Color.Info"
+                                              Title="@L["View analytics"]" />
+                            </div>
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+                <PagerContent>
+                    <MudDataGridPager T="ConversationDto" />
+                </PagerContent>
+                <NoRecordsContent>
+                    <div class="d-flex flex-column align-center justify-center" style="height: 300px;">
+                        <MudIcon Icon="@Icons.Material.Filled.HistoryToggleOff" Style="font-size: 4rem; opacity: 0.3;" />
+                        <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mt-4">
+                            @L["No past conversations found"]
+                        </MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @L["Completed conversations will appear here once resolved"]
+                        </MudText>
+                        <MudButton Variant="Variant.Outlined"
+                                  Color="Color.Primary"
+                                  StartIcon="@Icons.Material.Filled.PersonalVideo"
+                                  Class="mt-4"
+                                  OnClick="NavigateToMyConversations">
+                            @L["View My Active Conversations"]
+                        </MudButton>
+                    </div>
+                </NoRecordsContent>
+            </MudDataGrid>
+        }
+    </div>
+</MudContainer>
+
+<style>
+    .mud-table-container {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .mud-table-container .mud-table-head {
+        background-color: var(--mud-palette-surface-variant);
+    }
+    
+    .text-truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+@code {
+    private bool loading = true;
+    private string searchString = string.Empty;
+    private ConversationStatus? selectedStatus = null;
+    private DateRange? dateRange = null;
+    private int currentPage = 1;
+    private int pageSize = 15;
+    private PaginatedData<ConversationDto>? conversations;
+    private string? currentUserId;
+    private HubConnection? _hubConnection;
+    private MudDataGrid<ConversationDto>? dataGrid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        loading = false; // Let the MudDataGrid handle loading
+        await SetupSignalRConnection();
+    }
+
+    private async Task<GridData<ConversationDto>> ServerReload(GridState<ConversationDto> state)
+    {
+        // Update pagination and sorting based on grid state
+        currentPage = state.Page + 1; // MudDataGrid is 0-based, our query is 1-based
+        pageSize = state.PageSize;
+        
+        // Handle sorting
+        string? sortBy = "CompletedAt";
+        bool sortDescending = true;
+        
+        if (state.SortDefinitions?.Any() == true)
+        {
+            var sortDef = state.SortDefinitions.First();
+            sortBy = sortDef.SortBy?.ToLower() switch
+            {
+                "conversationreference" => "ConversationReference",
+                "username" => "UserName", 
+                "status" => "Status",
+                "completedat" => "CompletedAt",
+                "duration" => "Duration",
+                "messagecount" => "MessageCount",
+                "conversationsummary" => "ConversationSummary",
+                _ => "CompletedAt"
+            };
+            sortDescending = sortDef.Descending;
+        }
+
+        // Load data with grid parameters
+        await LoadPastConversationsWithParams(sortBy, sortDescending);
+        
+        return new GridData<ConversationDto>
+        {
+            Items = conversations?.Items ?? new List<ConversationDto>(),
+            TotalItems = conversations?.TotalItems ?? 0
+        };
+    }
+
+    private async Task LoadPastConversations()
+    {
+        await LoadPastConversationsWithParams("CompletedAt", true);
+    }
+
+    private async Task LoadPastConversationsWithParams(string sortBy, bool sortDescending)
+    {
+        loading = true;
+        try
+        {
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                conversations = null;
+                Snackbar.Add("User not authenticated", Severity.Error);
+                return;
+            }
+
+            var query = new GetMyPastConversationsQuery(
+                AgentId: currentUserId,
+                SearchTerm: searchString,
+                Status: selectedStatus,
+                StartDate: dateRange?.Start,
+                EndDate: dateRange?.End,
+                Page: currentPage,
+                PageSize: pageSize,
+                SortBy: sortBy,
+                SortDescending: sortDescending
+            );
+
+            var result = await Mediator.Send(query);
+            if (result.Succeeded)
+            {
+                conversations = result.Data;
+            }
+            else
+            {
+                conversations = null;
+                Snackbar.Add($"Error loading past conversations: {string.Join(", ", result.Errors)}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            conversations = null;
+            Snackbar.Add($"Error loading past conversations: {ex.Message}", Severity.Error);
+            Console.WriteLine($"Error loading past conversations: {ex}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task OnSearch()
+    {
+        currentPage = 1;
+        if (dataGrid != null)
+        {
+            await dataGrid.ReloadServerData();
+        }
+    }
+
+    private async Task OnStatusValueChanged(ConversationStatus? newValue)
+    {
+        selectedStatus = newValue;
+        currentPage = 1;
+        // Force the DataGrid to reload
+        if (dataGrid != null)
+        {
+            await dataGrid.ReloadServerData();
+        }
+    }
+
+    private async Task OnDateRangeChanged()
+    {
+        currentPage = 1;
+        if (dataGrid != null)
+        {
+            await dataGrid.ReloadServerData();
+        }
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        currentPage = page;
+        await LoadPastConversations();
+    }
+
+    private void ViewConversation(string conversationId)
+    {
+        Navigation.NavigateTo($"/agent/conversations/{conversationId}");
+    }
+
+    private void NavigateToMyConversations()
+    {
+        Navigation.NavigateTo("/agent/my-conversations");
+    }
+
+    private Color GetStatusColor(ConversationStatus status)
+    {
+        return status switch
+        {
+            ConversationStatus.Completed => Color.Success,
+            ConversationStatus.Abandoned => Color.Warning,
+            ConversationStatus.Archived => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalDays >= 1)
+            return $"{(int)duration.TotalDays}d {duration.Hours}h";
+        else if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        else
+            return $"{duration.Minutes}m";
+    }
+
+    private async Task SetupSignalRConnection()
+    {
+        try
+        {
+            // Use the SignalRConnectionService to get the connection
+            await SignalRService.EnsureConnectedAsync();
+            _hubConnection = SignalRService.HubConnection;
+
+            if (_hubConnection != null)
+            {
+                // Handle conversation status changes - past conversations page mainly listens for additions
+                _hubConnection.On<string, ConversationStatus>("ConversationStatusChanged", OnConversationStatusChanged);
+                _hubConnection.On<string, string>("ConversationCompleted", OnConversationCompleted);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR connection error: {ex.Message}");
+        }
+    }
+
+    private async Task OnConversationStatusChanged(string conversationId, ConversationStatus newStatus)
+    {
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                var pastStatuses = new[] { ConversationStatus.Completed, ConversationStatus.Abandoned, ConversationStatus.Archived };
+                
+                if (pastStatuses.Contains(newStatus))
+                {
+                    // Check if this conversation involves the current agent
+                    // If so, refresh the past conversations list to include the newly completed conversation
+                    await LoadPastConversations();
+                    Snackbar.Add($"Conversation {conversationId} moved to past conversations", Severity.Info);
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling conversation status change: {ex.Message}");
+            }
+        });
+    }
+
+    private async Task OnConversationCompleted(string conversationId, string agentId)
+    {
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                if (agentId == currentUserId)
+                {
+                    // Conversation completed by current user - refresh to show it in past conversations
+                    await LoadPastConversations();
+                    Snackbar.Add($"Your completed conversation {conversationId} is now in past conversations", Severity.Success);
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling conversation completion: {ex.Message}");
+            }
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // SignalRConnectionService handles its own disposal
+        // We just need to remove our event handlers
+        if (_hubConnection is not null)
+        {
+            _hubConnection.Remove("ConversationStatusChanged");
+            _hubConnection.Remove("ConversationCompleted");
+        }
+    }
+}

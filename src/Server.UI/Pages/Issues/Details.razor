@@ -84,19 +84,6 @@
                         <MudItem xs="12" md="6">
                             <MudStack>
                                 <div>
-                                    <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Reporter"]</MudText>
-                                    <MudText Typo="Typo.body1">
-                                        @if (_issue.ReporterContact != null)
-                                        {
-                                            @($"{_issue.ReporterContact.Name} ({_issue.ReporterContact.PhoneNumber})")
-                                        }
-                                        else
-                                        {
-                                            @L["Unknown"]
-                                        }
-                                    </MudText>
-                                </div>
-                                <div>
                                     <MudText Typo="Typo.subtitle2" Class="mb-1">@L["Created"]</MudText>
                                     <MudText Typo="Typo.body1">@_issue.Created?.ToString("g")</MudText>
                                 </div>
@@ -111,6 +98,9 @@
                         </MudItem>
                     </MudGrid>
                 </MudPaper>
+
+                <!-- Reporter Contact Information -->
+                <ReporterContactCard Contact="_issue.ReporterContact" />
 
                 <!-- Attachments -->
                 @if (_issue.Attachments?.Any() == true)

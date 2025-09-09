@@ -1,0 +1,97 @@
+@using ApexCharts
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationPerformanceStats
+
+@inject IStringLocalizer<ConversationHourlyDistributionChart> L
+@inject LayoutService LayoutService
+
+@if (HourlyData?.Any() == true)
+{
+    <ApexChart TItem="ConversationChartDataPoint" 
+               Options="Options" 
+               @ref="Chart"
+               Height="270">
+        
+        <ApexPointSeries TItem="ConversationChartDataPoint"
+                         Items="HourlyData"
+                         Name="@L["Conversations"]"
+                         XValue="@(e => e.Label)"
+                         YValue="@(e => (decimal)e.Value)"
+                         SeriesType="SeriesType.Bar" />
+    </ApexChart>
+}
+else
+{
+    <div class="d-flex justify-center align-center" style="height: 270px;">
+        <MudText Typo="Typo.body1" Color="Color.Default">@L["No data available"]</MudText>
+    </div>
+}
+
+@code {
+    [Parameter] public List<ConversationChartDataPoint> HourlyData { get; set; } = default!;
+
+    private ApexChart<ConversationChartDataPoint>? Chart;
+    private ApexChartOptions<ConversationChartDataPoint> Options = new();
+    protected override Task OnParametersSetAsync()
+    {
+        if (HourlyData?.Any() == true)
+        {
+            SetupChartOptions();
+        }
+        return Task.CompletedTask;
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Let ApexChart handle its own rendering lifecycle
+        // Manual Chart.RenderAsync() calls can cause race conditions and NullReferenceException
+        return Task.CompletedTask;
+    }
+
+    private void SetupChartOptions()
+    {
+        var isDarkMode = LayoutService.IsDarkMode;
+        var primaryColor = isDarkMode ? "#81C784" : "#4CAF50";
+        
+        Options = new ApexChartOptions<ConversationChartDataPoint>
+        {
+            Theme = new Theme { Mode = isDarkMode ? Mode.Dark : Mode.Light },
+            Chart = new Chart { Background = "transparent" },
+            Colors = new List<string> { primaryColor },
+            Xaxis = new XAxis
+            {
+                Type = XAxisType.Category,
+                Title = new AxisTitle { Text = L["Hour of Day"].ToString() }
+            },
+            Yaxis = new List<YAxis>
+            {
+                new YAxis
+                {
+                    Title = new AxisTitle { Text = L["Number of Conversations"].ToString() },
+                    Labels = new YAxisLabels
+                    {
+                        Formatter = @"function (value) {
+                            return Math.round(value);
+                        }"
+                    }
+                }
+            },
+            Tooltip = new Tooltip
+            {
+                Y = new TooltipY
+                {
+                    Formatter = @"function(value) { 
+                        return Math.round(value) + ' conversations'; 
+                    }"
+                }
+            },
+            DataLabels = new DataLabels
+            {
+                Enabled = false
+            },
+            Grid = new Grid
+            {
+                BorderColor = isDarkMode ? "#424242" : "#e0e0e0"
+            }
+        };
+    }
+}

@@ -6,7 +6,7 @@ using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 
 namespace CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationById;
 
-public record GetConversationByIdQuery(string ConversationId) : IRequest<Result<ConversationDetailsDto>>;
+public record GetConversationByIdQuery(int? ConversationId, string? ConversationReference) : IRequest<Result<ConversationDetailsDto>>;
 
 public class GetConversationByIdQueryHandler : IRequestHandler<GetConversationByIdQuery, Result<ConversationDetailsDto>>
 {
@@ -34,7 +34,7 @@ public class GetConversationByIdQueryHandler : IRequestHandler<GetConversationBy
                 .Include(c => c.Messages)
                 .Include(c => c.Participants)
                 .Include(c => c.Handoffs)
-                .FirstOrDefaultAsync(c => c.ConversationReference == request.ConversationId, cancellationToken);
+                .FirstOrDefaultAsync(c => c.Id == request.ConversationId || c.ConversationReference == request.ConversationReference, cancellationToken);
 
             if (conversation == null)
             {

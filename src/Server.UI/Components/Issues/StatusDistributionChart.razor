@@ -49,22 +49,31 @@ else
 
     protected override Task OnParametersSetAsync()
     {
+        _shouldRender = false;
+        
         if (StatusData?.Any() == true)
         {
-            PrepareChartData();
-            SetupChartOptions();
-            _shouldRender = true;
+            try
+            {
+                PrepareChartData();
+                SetupChartOptions();
+                _shouldRender = ChartData?.Any() == true && Options != null;
+            }
+            catch (Exception ex)
+            {
+                // Log the exception if needed
+                Console.WriteLine($"Chart setup error: {ex.Message}");
+                _shouldRender = false;
+            }
         }
         return Task.CompletedTask;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_shouldRender && Chart != null)
-        {
-            await Chart.RenderAsync();
-            _shouldRender = false;
-        }
+        // Let ApexChart handle its own rendering lifecycle
+        // Manual Chart.RenderAsync() calls can cause race conditions and NullReferenceException
+        return Task.CompletedTask;
     }
 
     private void PrepareChartData()

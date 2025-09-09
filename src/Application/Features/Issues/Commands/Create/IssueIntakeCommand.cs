@@ -1,4 +1,4 @@
-using CleanArchitecture.Blazor.Application.Common.Interfaces;
+﻿using CleanArchitecture.Blazor.Application.Common.Interfaces;
 using CleanArchitecture.Blazor.Application.Features.Issues.Caching;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Events;
@@ -20,6 +20,10 @@ public record IssueIntakeCommand : ICacheInvalidatorRequest<Result<Guid>>
     public bool ConsentFlag { get; set; } = true;
     public string Status { get; set; } = "New";
     public Guid? ContactId { get; set; }
+
+    public string TenantId { get; set; }
+
+    public string? ConversationReference { get; set; }
     public int? ConversationId { get; set; }
     public List<IssueAttachmentData>? Attachments { get; set; }
 

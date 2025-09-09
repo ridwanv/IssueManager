@@ -1,4 +1,5 @@
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
+using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Enums;
 using CleanArchitecture.Blazor.Server.UI.Hubs;
@@ -12,14 +13,14 @@ namespace CleanArchitecture.Blazor.Server.UI.Controllers;
 [Microsoft.AspNetCore.Mvc.Route("api/[controller]")]
 public class TestEscalationController : ControllerBase
 {
-    private readonly IHubContext<ServerHub, ISignalRHub> _hubContext;
+    private readonly IApplicationHubWrapper _hubWrapper;
     private readonly IApplicationDbContextFactory _dbContextFactory;
 
     public TestEscalationController(
-        IHubContext<ServerHub, ISignalRHub> hubContext,
+        IApplicationHubWrapper hubWrapper,
         IApplicationDbContextFactory dbContextFactory)
     {
-        _hubContext = hubContext;
+        _hubWrapper = hubWrapper;
         _dbContextFactory = dbContextFactory;
     }
 
@@ -31,6 +32,7 @@ public class TestEscalationController : ControllerBase
             var conversationId = Guid.NewGuid().ToString("N")[..8];
             var reason = "Customer is frustrated and requesting immediate assistance";
             var customerPhone = "+1234567890";
+            var customerName = "Test Customer";
             var priority = 2; // High priority
             var escalatedAt = DateTime.UtcNow;
 
@@ -39,7 +41,7 @@ public class TestEscalationController : ControllerBase
             var conversation = new Conversation
             {
                 ConversationReference = conversationId,
-                UserName = "Test Customer",
+                UserName = customerName,
                 WhatsAppPhoneNumber = customerPhone,
                 Status = ConversationStatus.Active,
                 Mode = ConversationMode.Escalating,
@@ -54,17 +56,36 @@ public class TestEscalationController : ControllerBase
             db.Conversations.Add(conversation);
             await db.SaveChangesAsync(CancellationToken.None);
 
-            // Broadcast persistent escalation notification
-            await _hubContext.Clients.Group("Agents").EscalationPersistentNotification(
-                conversationId, reason, customerPhone, priority, escalatedAt);
+            // Create the escalation popup DTO
+            var escalationPopupDto = new EscalationPopupDto
+            {
+                ConversationReference = conversationId,
+                CustomerName = customerName,
+                PhoneNumber = customerPhone,
+                EscalationReason = reason,
+                Priority = priority,
+                EscalatedAt = escalatedAt,
+                LastMessage = "I need help with my order urgently!",
+                MessageCount = 5,
+                ConversationDuration = TimeSpan.FromMinutes(15),
+                ConversationSummary = "Customer escalated due to delivery delay concerns"
+            };
+
+            // Send escalation popup to all agents (this should trigger the popup)
+            await _hubWrapper.BroadcastEscalationPopupToAvailableAgents(escalationPopupDto);
+
+            // Also broadcast persistent escalation notification (for the indicator)
+            await _hubWrapper.BroadcastConversationEscalated(
+                conversationId, reason, customerPhone);
 
             return Ok(new { 
-                message = "Test escalation created in database and notification sent",
+                message = "Test escalation created and popup sent to agents",
                 conversationId,
                 reason,
                 priority,
                 escalatedAt,
-                databaseId = conversation.Id
+                databaseId = conversation.Id,
+                popupSent = true
             });
         }
         catch (Exception ex)
@@ -91,7 +112,7 @@ public class TestEscalationController : ControllerBase
             }
 
             // Broadcast escalation acceptance to clear notifications
-            await _hubContext.Clients.Group("Agents").EscalationAccepted(conversationId);
+            await _hubWrapper.NotifyEscalationAccepted(conversationId, "test-agent");
 
             return Ok(new { 
                 message = "Test escalation acceptance sent and database updated",

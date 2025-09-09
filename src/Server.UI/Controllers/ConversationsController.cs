@@ -13,6 +13,7 @@ using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 using CleanArchitecture.Blazor.Application.Common.Models;
 using Microsoft.AspNetCore.SignalR;
 using CleanArchitecture.Blazor.Server.UI.Hubs;
+using CleanArchitecture.Blazor.Application.Common.Interfaces;
 
 namespace CleanArchitecture.Blazor.Server.UI.Controllers;
 
@@ -23,15 +24,18 @@ public class ConversationsController : ControllerBase
     private readonly IMediator _mediator;
     private readonly ILogger<ConversationsController> _logger;
     private readonly IHubContext<ServerHub, ISignalRHub> _hubContext;
+    private readonly IApplicationHubWrapper _hubWrapper;
 
     public ConversationsController(
         IMediator mediator, 
         ILogger<ConversationsController> logger,
-        IHubContext<ServerHub, ISignalRHub> hubContext)
+        IHubContext<ServerHub, ISignalRHub> hubContext,
+        IApplicationHubWrapper hubWrapper)
     {
         _mediator = mediator;
         _logger = logger;
         _hubContext = hubContext;
+        _hubWrapper = hubWrapper;
     }
 
     /// <summary>
@@ -87,7 +91,7 @@ public class ConversationsController : ControllerBase
     {
         try
         {
-            var query = new GetConversationByIdQuery(conversationId);
+            var query = new GetConversationByIdQuery(null,conversationId);
             var result = await _mediator.Send(query);
             
             if (!result.Succeeded)
@@ -519,6 +523,16 @@ public class ConversationsController : ControllerBase
             _logger.LogInformation("Notifying agent {AgentId} of user message in conversation {ConversationId}", 
                 request.AgentId, conversationId);
 
+            // Get or find the conversation to get the database ConversationId
+            var getConversationQuery = new GetConversationByIdQuery(null, conversationId);
+            var conversationResult = await _mediator.Send(getConversationQuery);
+            
+            int dbConversationId = 0;
+            if (conversationResult.Succeeded && conversationResult.Data != null)
+            {
+                dbConversationId = conversationResult.Data.Conversation.Id;
+            }
+
             // First, store the user message in the conversation history
             var messageDto = new ConversationMessageCreateDto
             {
@@ -540,15 +554,44 @@ public class ConversationsController : ControllerBase
                 return BadRequest(Result.Failure("Failed to store user message"));
             }
 
+            // If we didn't have the conversation ID before, get it now
+            if (dbConversationId == 0)
+            {
+                var newConversationResult = await _mediator.Send(getConversationQuery);
+                if (newConversationResult.Succeeded && newConversationResult.Data != null)
+                {
+                    dbConversationId = newConversationResult.Data.Conversation.Id;
+                }
+            }
+
             // Send real-time SignalR notification to agents
             try
             {
+                // Legacy SignalR notification for NotificationIndicator and other components
                 await _hubContext.Clients.All.NewConversationMessage(
                     conversationId,
                     request.UserName ?? request.UserId ?? "Unknown User",
                     request.UserMessage,
                     false // isFromAgent = false since this is from a user
                 );
+
+                // New SignalR notification for ConversationDetail real-time updates
+                var userMessageDto = new ConversationMessageDto
+                {
+                    Id = messageResult.Data, // The ID returned from adding the message
+                    ConversationId = dbConversationId, // Database conversation ID
+                    BotFrameworkConversationId = conversationId,
+                    Role = "user",
+                    Content = request.UserMessage,
+                    Timestamp = request.Timestamp,
+                    UserName = request.UserName ?? request.UserId ?? "Unknown User",
+                    UserId = request.UserId,
+                    TenantId = string.Empty // We'll need to derive this or leave it empty for now
+                };
+
+                Console.WriteLine($"[ConversationsController] Broadcasting user message - ConversationId: {conversationId}, Content: {request.UserMessage}");
+                await _hubWrapper.BroadcastNewMessageToConversationGroup(conversationId, userMessageDto);
+                Console.WriteLine($"[ConversationsController] Sent NewMessageReceived to group: Conversation_{conversationId}");
 
                 _logger.LogInformation("SignalR notification sent for conversation {ConversationId}", conversationId);
             }

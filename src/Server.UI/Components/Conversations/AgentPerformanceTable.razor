@@ -1,0 +1,47 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationPerformanceStats
+@using Microsoft.Extensions.Localization
+@using MudBlazor
+
+@inject IStringLocalizer<AgentPerformanceTable> L
+
+<MudSimpleTable Dense="true" Hover="true">
+    <thead>
+        <tr>
+            <th>@L["Agent"]</th>
+            <th>@L["Total"]</th>
+            <th>@L["Completed"]</th>
+            <th>@L["Avg Sentiment"]</th>
+            <th>@L["Completion Rate"]</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var agent in Agents.OrderByDescending(a => a.TotalConversations))
+        {
+            <tr>
+                <td>@agent.AgentName</td>
+                <td>@agent.TotalConversations</td>
+                <td>@agent.CompletedConversations</td>
+                <td>
+                    <MudChip T="string" Color="@GetSentimentColor(agent.AverageSentimentScore)" Size="MudBlazor.Size.Small">
+                        @agent.AverageSentimentScore.ToString("F2")
+                    </MudChip>
+                </td>
+                <td>@agent.CompletionRateFormatted</td>
+            </tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    [Parameter] public List<AgentPerformanceDto> Agents { get; set; } = default!;
+
+    private Color GetSentimentColor(double sentiment)
+    {
+        return sentiment switch
+        {
+            >= 0.5 => Color.Success,
+            >= 0.0 => Color.Warning,
+            _ => Color.Error
+        };
+    }
+}

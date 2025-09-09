@@ -1,6 +1,7 @@
 ﻿using CleanArchitecture.Blazor.Application.Common.Interfaces;
 using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity;
 using CleanArchitecture.Blazor.Application.Common.Models;
+using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -108,11 +109,24 @@ public class SendAgentMessageCommandHandler : IRequestHandler<SendAgentMessageCo
         }
 
         // Broadcast the new message to all clients
-        await _hubWrapper.BroadcastNewConversationMessage(
-            conversation.ConversationReference, 
-            message.UserName, 
-            message.Content, 
-            true);
+        var messageDto = new ConversationMessageDto
+        {
+            Id = message.Id,
+            ConversationId = message.ConversationId,
+            BotFrameworkConversationId = message.BotFrameworkConversationId,
+            Role = message.Role,
+            Content = message.Content,
+            Timestamp = message.Timestamp,
+            UserName = message.UserName,
+            UserId = agent.ApplicationUserId,
+            TenantId = message.TenantId
+        };
+
+        Console.WriteLine($"[SendAgentMessage] Broadcasting message - ConversationId: {message.ConversationId}, BotFrameworkId: {message.BotFrameworkConversationId}, Content: {message.Content}");
+
+        // Send to conversation group for real-time updates
+        await _hubWrapper.BroadcastNewMessageToConversationGroup(conversation.ConversationReference, messageDto);
+        Console.WriteLine($"[SendAgentMessage] Sent NewMessageReceived to group: Conversation_{conversation.ConversationReference}");
 
         return await Result<Unit>.SuccessAsync(Unit.Value);
     }

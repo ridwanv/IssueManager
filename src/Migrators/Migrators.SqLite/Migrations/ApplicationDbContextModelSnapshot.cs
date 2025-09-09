@@ -1909,7 +1909,7 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.ConversationInsight", b =>
                 {
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
-                        .WithOne()
+                        .WithOne("ConversationInsight")
                         .HasForeignKey("CleanArchitecture.Blazor.Domain.Entities.ConversationInsight", "ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2134,6 +2134,8 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
 
             modelBuilder.Entity("CleanArchitecture.Blazor.Domain.Entities.Conversation", b =>
                 {
+                    b.Navigation("ConversationInsight");
+
                     b.Navigation("Handoffs");
 
                     b.Navigation("Messages");

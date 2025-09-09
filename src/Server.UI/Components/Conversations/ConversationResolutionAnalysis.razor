@@ -1,0 +1,38 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationPerformanceStats
+@using Microsoft.Extensions.Localization
+@using MudBlazor
+
+@inject IStringLocalizer<ConversationResolutionAnalysis> L
+
+<MudStack Spacing="3">
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.body1" Color="Color.Primary">@L["Median Resolution Time"]</MudText>
+        <MudText Typo="Typo.h6">@PerformanceStats.MedianResolutionFormatted</MudText>
+    </MudStack>
+    
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.body1" Color="Color.Primary">@L["90th Percentile"]</MudText>
+        <MudText Typo="Typo.h6" Color="Color.Warning">@PerformanceStats.P90ResolutionFormatted</MudText>
+    </MudStack>
+    
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.body1" Color="Color.Primary">@L["95th Percentile"]</MudText>
+        <MudText Typo="Typo.h6" Color="Color.Error">@PerformanceStats.P95ResolutionFormatted</MudText>
+    </MudStack>
+
+    <MudDivider />
+
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.body1" Color="Color.Primary">@L["Total Completed"]</MudText>
+        <MudText Typo="Typo.h6">@PerformanceStats.TotalCompletedConversations</MudText>
+    </MudStack>
+
+    <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.body1" Color="Color.Primary">@L["Analysis Period"]</MudText>
+        <MudText Typo="Typo.h6">@PerformanceStats.PeriodDays days</MudText>
+    </MudStack>
+</MudStack>
+
+@code {
+    [Parameter] public ConversationPerformanceStatsDto PerformanceStats { get; set; } = default!;
+}

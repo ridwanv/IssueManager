@@ -1,0 +1,349 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Application.Common.Models
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+
+<MudDataGrid T="ConversationDto"
+            Items="@Conversations"
+            SortMode="SortMode.Single"
+            Filterable="true"
+            Dense="true"
+            Hover="true"
+            Striped="true"
+            FixedHeader="true"
+            Height="@Height"
+            ServerData="@ServerReload"
+            Loading="@Loading"
+            Class="past-conversations-table">
+    <ToolBarContent>
+        <div class="d-flex align-center gap-4 w-100">
+            <MudText Typo="Typo.h6">@Title</MudText>
+            <MudSpacer />
+            @if (ShowBulkActions && SelectedConversations.Any())
+            {
+                <div class="d-flex align-center gap-2">
+                    <MudButton Variant="Variant.Outlined"
+                              StartIcon="@Icons.Material.Filled.Download"
+                              Size="Size.Small"
+                              OnClick="ExportSelected">
+                        @L["Export Selected"] (@SelectedConversations.Count)
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                              StartIcon="@Icons.Material.Filled.Analytics"
+                              Size="Size.Small"
+                              Color="Color.Info"
+                              OnClick="AnalyzeSelected">
+                        @L["Analyze Selected"]
+                    </MudButton>
+                </div>
+            }
+        </div>
+    </ToolBarContent>
+    <Columns>
+        @if (ShowBulkActions)
+        {
+            <SelectColumn T="ConversationDto" @bind-SelectedItems="SelectedConversations" />
+        }
+
+        <PropertyColumn Property="x => x.ConversationReference" 
+                      Title="@L["Conversation ID"]"
+                      Sortable="true"
+                      Filterable="true">
+            <CellTemplate>
+                <MudLink Href="@($"/agent/conversations/{context.Item.ConversationReference}")"
+                        Color="Color.Primary"
+                        Typo="Typo.body2"
+                        Class="font-weight-medium text-decoration-none">
+                    @context.Item.ConversationReference
+                </MudLink>
+            </CellTemplate>
+        </PropertyColumn>
+        
+        <PropertyColumn Property="x => x.UserName" 
+                      Title="@L["User"]"
+                      Sortable="true"
+                      Filterable="true">
+            <CellTemplate>
+                <div class="d-flex align-center gap-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                    <MudText Typo="Typo.body2">
+                        @(context.Item.UserName ?? context.Item.UserId ?? L["Unknown"])
+                    </MudText>
+                </div>
+            </CellTemplate>
+        </PropertyColumn>
+
+        <PropertyColumn Property="x => x.Status" 
+                      Title="@L["Status"]"
+                      Sortable="true"
+                      Filterable="false">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" 
+                        Color="@GetStatusColor(context.Item.Status)"
+                        Variant="Variant.Filled">
+                    @context.Item.Status
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+
+        <PropertyColumn Property="x => x.ResolutionCategory" 
+                      Title="@L["Resolution"]"
+                      Sortable="true"
+                      Filterable="true">
+            <CellTemplate>
+                @if (context.Item.ResolutionCategory.HasValue)
+                {
+                    <MudChip T="string" Size="Size.Small" 
+                            Color="@GetResolutionColor(context.Item.ResolutionCategory.Value)"
+                            Variant="Variant.Text">
+                        @context.Item.ResolutionCategory.Value
+                    </MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @L["Not categorized"]
+                    </MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+
+        <PropertyColumn Property="x => x.CompletedAt" 
+                      Title="@L["Completed Date"]"
+                      Sortable="true"
+                      Filterable="false">
+            <CellTemplate>
+                @if (context.Item.CompletedAt.HasValue)
+                {
+                    <div>
+                        <MudText Typo="Typo.body2">
+                            @context.Item.CompletedAt.Value.ToString("MMM dd, yyyy")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @context.Item.CompletedAt.Value.ToString("HH:mm")
+                        </MudText>
+                    </div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @L["Not specified"]
+                    </MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+
+        <PropertyColumn Property="x => x.Duration" 
+                      Title="@L["Duration"]"
+                      Sortable="true"
+                      Filterable="false">
+            <CellTemplate>
+                @if (context.Item.Duration.TotalMinutes > 0)
+                {
+                    <MudText Typo="Typo.body2">
+                        @FormatDuration(context.Item.Duration)
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @L["Unknown"]
+                    </MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+
+        <PropertyColumn Property="x => x.MessageCount" 
+                      Title="@L["Messages"]"
+                      Sortable="true"
+                      Filterable="false">
+            <CellTemplate>
+                <div class="text-center">
+                    <MudText Typo="Typo.body2">
+                        @context.Item.MessageCount
+                    </MudText>
+                </div>
+            </CellTemplate>
+        </PropertyColumn>
+
+        @if (ShowResolvedBy)
+        {
+            <PropertyColumn Property="x => x.ResolvedByAgentName" 
+                          Title="@L["Resolved By"]"
+                          Sortable="false"
+                          Filterable="true">
+                <CellTemplate>
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Color="Color.Secondary" />
+                        <MudText Typo="Typo.body2">
+                            @(context.Item.ResolvedByAgentName ?? context.Item.CurrentAgentName ?? L["Unknown Agent"])
+                        </MudText>
+                    </div>
+                </CellTemplate>
+            </PropertyColumn>
+        }
+
+        <PropertyColumn Property="x => x.ConversationSummary" 
+                      Title="@L["Summary"]"
+                      Sortable="false"
+                      Filterable="true">
+            <CellTemplate>
+                @if (!string.IsNullOrEmpty(context.Item.ConversationSummary))
+                {
+                    <MudText Typo="Typo.body2" 
+                             Class="text-truncate" 
+                             Style="max-width: 250px;" 
+                             Title="@context.Item.ConversationSummary">
+                        @context.Item.ConversationSummary
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @L["No summary"]
+                    </MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+
+        <TemplateColumn Title="@L["Actions"]" Sortable="false" Filterable="false" CellClass="actions-column">
+            <CellTemplate>
+                <div class="d-flex gap-1">
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                  Size="Size.Small"
+                                  OnClick="@(() => ViewConversation(context.Item.ConversationReference))"
+                                  Title="@L["View conversation"]" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                  Size="Size.Small"
+                                  OnClick="@(() => ExportConversation(context.Item))"
+                                  Title="@L["Export conversation"]" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Analytics"
+                                  Size="Size.Small"
+                                  Color="Color.Info"
+                                  OnClick="@(() => ViewAnalytics(context.Item))"
+                                  Title="@L["View analytics"]" />
+                    @if (ShowNotesButton && !string.IsNullOrEmpty(context.Item.ResolutionNotes))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Notes"
+                                      Size="Size.Small"
+                                      Color="Color.Secondary"
+                                      OnClick="@(() => ViewResolutionNotes(context.Item))"
+                                      Title="@L["View resolution notes"]" />
+                    }
+                </div>
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="ConversationDto" />
+    </PagerContent>
+</MudDataGrid>
+
+<style>
+    .past-conversations-table {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .past-conversations-table .mud-table-head {
+        background-color: var(--mud-palette-surface-variant);
+    }
+    
+    .text-truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .actions-column {
+        width: 120px;
+    }
+</style>
+
+@code {
+    [Parameter] public IEnumerable<ConversationDto> Conversations { get; set; } = new List<ConversationDto>();
+    [Parameter] public Func<GridState<ConversationDto>, Task<GridData<ConversationDto>>>? ServerReload { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string Height { get; set; } = "600px";
+    [Parameter] public string Title { get; set; } = "Past Conversations";
+    [Parameter] public bool ShowBulkActions { get; set; } = true;
+    [Parameter] public bool ShowResolvedBy { get; set; } = false;
+    [Parameter] public bool ShowNotesButton { get; set; } = true;
+    [Parameter] public EventCallback<ConversationDto> OnConversationViewed { get; set; }
+    [Parameter] public EventCallback<ConversationDto> OnConversationExported { get; set; }
+    [Parameter] public EventCallback<List<ConversationDto>> OnBulkExport { get; set; }
+    [Parameter] public EventCallback<List<ConversationDto>> OnBulkAnalyze { get; set; }
+
+    private HashSet<ConversationDto> SelectedConversations = new();
+
+    private void ViewConversation(string conversationId)
+    {
+        Navigation.NavigateTo($"/agent/conversations/{conversationId}");
+        OnConversationViewed.InvokeAsync();
+    }
+
+    private async Task ExportConversation(ConversationDto conversation)
+    {
+        await OnConversationExported.InvokeAsync(conversation);
+    }
+
+    private void ViewAnalytics(ConversationDto conversation)
+    {
+        Navigation.NavigateTo($"/conversations/analytics?conversationId={conversation.ConversationReference}");
+    }
+
+    private void ViewResolutionNotes(ConversationDto conversation)
+    {
+        // Implementation for viewing resolution notes dialog
+        // This could open a dialog or navigate to a detailed view
+    }
+
+    private async Task ExportSelected()
+    {
+        await OnBulkExport.InvokeAsync(SelectedConversations.ToList());
+        SelectedConversations.Clear();
+    }
+
+    private async Task AnalyzeSelected()
+    {
+        await OnBulkAnalyze.InvokeAsync(SelectedConversations.ToList());
+        SelectedConversations.Clear();
+    }
+
+    private Color GetStatusColor(ConversationStatus status)
+    {
+        return status switch
+        {
+            ConversationStatus.Completed => Color.Success,
+            ConversationStatus.Abandoned => Color.Warning,
+            ConversationStatus.Archived => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetResolutionColor(ResolutionCategory category)
+    {
+        return category switch
+        {
+            ResolutionCategory.Resolved => Color.Success,
+            ResolutionCategory.EscalatedToTechnicalTeam => Color.Warning,
+            ResolutionCategory.InformationProvided => Color.Info,
+            ResolutionCategory.CustomerNoResponse => Color.Error,
+            ResolutionCategory.DuplicateIssue => Color.Secondary,
+            ResolutionCategory.CannotReproduce => Color.Warning,
+            _ => Color.Default
+        };
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalDays >= 1)
+            return $"{(int)duration.TotalDays}d {duration.Hours}h";
+        else if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        else
+            return $"{duration.Minutes}m";
+    }
+}

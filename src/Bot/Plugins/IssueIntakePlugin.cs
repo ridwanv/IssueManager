@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using IssueManager.Bot.Services;
 using IssueManager.Bot.Models;
+using IssueManager.Shared.DTOs;
 
 namespace Plugins;
 
@@ -82,30 +83,37 @@ public class IssueIntakePlugin
 
         try
         {
-            // Parse category and priority enums
-            var parsedCategory = ParseCategory(category ?? "General");
-            var parsedPriority = ParsePriority(priority!);
+            // Parse contact information to extract phone number and name
+            var (reporterName, reporterPhone) = ParseContact(contact!);
 
-            // Note: Similarity checking and auto-linking is now handled by the CreateIssueCommandHandler
+            // Get Bot Framework conversation reference
+            var conversationReference = GetBotFrameworkConversationReference();
 
-            // Create the issue using API client instead of MediatR
-            var command = new CreateIssueCommand
+            // Create the issue DTO
+            var dto = new IssueIntakeDto
             {
-                Title = summary!,
-                Description = description!,
-                Category = parsedCategory,
-                Priority = parsedPriority,
-                Status = IssueStatus.New,
-                ReporterContactId = null, // Will be resolved by the API based on phone number
-                ConversationId = _conversationData.ConversationEntityId, // Link to conversation
+                ReporterPhone = reporterPhone,
+                ReporterName = reporterName,
                 Channel = "WhatsApp",
+                Category = category ?? "General",
                 Product = product!,
                 Severity = severity!,
+                Priority = priority!,
                 Summary = summary!,
-                ConsentFlag = true
+                Description = description!,
+                ConsentFlag = true,
+                Status = "New",
+                ConversationReference = _turnContext.Activity.Conversation.Id,
+                Attachments = _conversationData.Attachments?.Select(a => new IssueAttachmentDto
+                {
+                    Name = a.Name,
+                    ContentType = a.ContentType,
+                    Url = a.Url,
+                    Size = 0 // Bot attachments don't have size information
+                }).ToList()
             };
 
-            var result = await _apiClient.CreateIssueAsync(command);
+            var result = await _apiClient.CreateIssueIntakeAsync(dto);
             
             if (result.Succeeded)
             {
@@ -113,7 +121,7 @@ public class IssueIntakePlugin
                 _conversationData.History.Add(new ConversationTurn
                 {
                     Role = "system",
-                    Message = $"ISSUE_CREATED:{result.Data}"
+                    Message = $"ISSUE_CREATED:{result.Data}:ConvRef:{conversationReference}"
                 });
 
                 // Format confirmation message
@@ -196,6 +204,9 @@ public class IssueIntakePlugin
     {
         try
         {
+            // Log the conversation reference for tracking duplicate checks
+            var conversationReference = GetBotFrameworkConversationReference();
+            
             // Get recent issues to check for duplicates
             var recentIssues = await _apiClient.GetIssuesAsync(
                 pageNumber: 1, 
@@ -214,6 +225,13 @@ public class IssueIntakePlugin
 
                 if (recentByPhone.Any())
                 {
+                    // Store duplicate check in conversation history for reference
+                    _conversationData.History.Add(new ConversationTurn
+                    {
+                        Role = "system",
+                        Message = $"DUPLICATE_CHECK:FOUND:{recentByPhone.Count}:ConvRef:{conversationReference}"
+                    });
+
                     var duplicateMessage = $"⚠️ **Potential Duplicate Issues Found**\n\n";
                     duplicateMessage += $"I found {recentByPhone.Count} recent issue(s) from this number:\n\n";
                     
@@ -225,12 +243,29 @@ public class IssueIntakePlugin
                     duplicateMessage += "\nWould you like to update an existing issue instead of creating a new one?";
                     return duplicateMessage;
                 }
+                else
+                {
+                    // Store no duplicates found in conversation history
+                    _conversationData.History.Add(new ConversationTurn
+                    {
+                        Role = "system",
+                        Message = $"DUPLICATE_CHECK:NONE:ConvRef:{conversationReference}"
+                    });
+                }
             }
 
             return "No recent duplicate issues found. Proceeding with new issue creation.";
         }
         catch (Exception ex)
         {
+            // Store error in conversation history for debugging
+            var conversationReference = GetBotFrameworkConversationReference();
+            _conversationData.History.Add(new ConversationTurn
+            {
+                Role = "system",
+                Message = $"DUPLICATE_CHECK:ERROR:ConvRef:{conversationReference}"
+            });
+            
             return "Unable to check for duplicate issues at this time. Proceeding with new issue creation.";
         }
     }
@@ -361,4 +396,100 @@ public class IssueIntakePlugin
         return message;
     }
 
+    private (string name, string phone) ParseContact(string contact)
+    {
+        // Parse contact string in format "Name - +PhoneNumber"
+        var parts = contact.Split(" - ", StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length >= 2)
+        {
+            var name = parts[0].Trim();
+            var phone = parts[1].Trim();
+            return (name, phone);
+        }
+        
+        // If format is different, try to extract phone number with regex
+        var phoneMatch = System.Text.RegularExpressions.Regex.Match(contact, @"\+?[\d\s\-\(\)]+");
+        if (phoneMatch.Success)
+        {
+            var phone = phoneMatch.Value.Trim();
+            var name = contact.Replace(phone, "").Trim().Trim('-').Trim();
+            return (string.IsNullOrWhiteSpace(name) ? "WhatsApp User" : name, phone);
+        }
+        
+        // Fallback - treat entire string as name
+        return (contact, "Unknown");
+    }
+
+    /// <summary>
+    /// Gets the Bot Framework conversation reference for routing and tracking purposes
+    /// </summary>
+    /// <returns>JSON serialized conversation reference or fallback identifier</returns>
+    private string GetBotFrameworkConversationReference()
+    {
+        try
+        {
+            // Get the conversation reference from the current turn context
+            var conversationReference = _turnContext.Activity.GetConversationReference();
+            
+            if (conversationReference != null)
+            {
+                // Serialize the conversation reference to JSON for storage
+                return JsonSerializer.Serialize(conversationReference, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    WriteIndented = false
+                });
+            }
+        }
+        catch (Exception)
+        {
+            // If we can't get the conversation reference from turn context, fallback to available data
+        }
+
+        // Fallback: Use available conversation data
+        return JsonSerializer.Serialize(new
+        {
+            conversationId = _turnContext.Activity.Conversation?.Id ?? _conversationData.ThreadId ?? "unknown",
+            channelId = _turnContext.Activity.ChannelId ?? "whatsapp",
+            serviceUrl = _turnContext.Activity.ServiceUrl ?? "",
+            user = new
+            {
+                id = _turnContext.Activity.From?.Id ?? "unknown",
+                name = _turnContext.Activity.From?.Name ?? "WhatsApp User"
+            },
+            bot = new
+            {
+                id = _turnContext.Activity.Recipient?.Id ?? "bot",
+                name = _turnContext.Activity.Recipient?.Name ?? "IssueManager Bot"
+            },
+            timestamp = DateTime.UtcNow
+        }, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false
+        });
+    }
+
+    /// <summary>
+    /// Gets a simplified conversation identifier for logging and tracking
+    /// </summary>
+    /// <returns>Simple conversation identifier string</returns>
+    private string GetConversationId()
+    {
+        return _turnContext.Activity.Conversation?.Id ?? 
+               _conversationData.ThreadId ?? 
+               $"conv_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+    }
+
+    /// <summary>
+    /// Gets the user identifier from the conversation context
+    /// </summary>
+    /// <returns>User identifier string</returns>
+    private string GetUserId()
+    {
+        return _turnContext.Activity.From?.Id ?? 
+               _turnContext.Activity.From?.Name ?? 
+               "unknown_user";
+    }
 }

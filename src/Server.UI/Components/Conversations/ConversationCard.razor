@@ -1,0 +1,210 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Domain.Enums
+@inject IStringLocalizer<SharedResource> L
+@inject NavigationManager Navigation
+
+<MudCard Class="conversation-card" Style="height: 280px; display: flex; flex-direction: column;">
+    <MudCardHeader Class="pb-2">
+        <CardHeaderContent>
+            <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center gap-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Small" Color="Color.Primary" />
+                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold">
+                        @Conversation.ConversationReference
+                    </MudText>
+                </div>
+                <div class="d-flex gap-1">
+                    <MudChip T="string" 
+                             Size="Size.Small" 
+                             Color="@GetStatusColor(Conversation.Status)"
+                             Variant="Variant.Filled">
+                        @Conversation.Status
+                    </MudChip>
+                    @if (Conversation.Priority > 1)
+                    {
+                        <MudChip T="string" 
+                                 Size="Size.Small" 
+                                 Color="@GetPriorityColor(Conversation.Priority)"
+                                 Variant="Variant.Text"
+                                 Icon="@GetPriorityIcon(Conversation.Priority)">
+                            @GetPriorityText(Conversation.Priority)
+                        </MudChip>
+                    }
+                </div>
+            </div>
+        </CardHeaderContent>
+    </MudCardHeader>
+    
+    <MudCardContent Class="flex-grow-1 pt-0">
+        <div class="d-flex flex-column gap-2" style="height: 100%;">
+            <!-- User Information -->
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Color="Color.Secondary" />
+                <MudText Typo="Typo.body2" Class="text-truncate">
+                    @(Conversation.UserName ?? Conversation.UserId ?? L["Unknown User"])
+                </MudText>
+            </div>
+
+            <!-- Summary -->
+            <div class="flex-grow-1 d-flex flex-column">
+                @if (!string.IsNullOrEmpty(Conversation.ConversationSummary))
+                {
+                    <MudText Typo="Typo.body2" 
+                             Color="Color.Secondary" 
+                             Class="conversation-summary"
+                             Style="display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; max-height: 4.2em;">
+                        @Conversation.ConversationSummary
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" 
+                             Color="Color.Tertiary" 
+                             Style="font-style: italic;">
+                        @L["No summary available"]
+                    </MudText>
+                }
+            </div>
+
+            <!-- Metadata -->
+            <div class="d-flex align-center justify-space-between mt-auto">
+                <div class="d-flex align-center gap-3">
+                    <div class="d-flex align-center gap-1">
+                        <MudIcon Icon="@Icons.Material.Filled.Message" Size="Size.Small" Color="Color.Info" />
+                        <MudText Typo="Typo.caption">@Conversation.MessageCount</MudText>
+                    </div>
+                    @if (Conversation.EscalatedAt.HasValue)
+                    {
+                        <div class="d-flex align-center gap-1">
+                            <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" Color="Color.Warning" />
+                            <MudText Typo="Typo.caption">
+                                @L["Accepted"] @Conversation.EscalatedAt.Value.ToString("MMM dd")
+                            </MudText>
+                        </div>
+                    }
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                    @GetTimeAgo(Conversation.LastActivityAt)
+                </MudText>
+            </div>
+        </div>
+    </MudCardContent>
+    
+    <MudCardActions Class="pt-0">
+        <div class="d-flex align-center justify-space-between w-100">
+            <div class="d-flex gap-1">
+                <MudButton Size="Size.Small"
+                          Variant="Variant.Text"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Visibility"
+                          OnClick="@(() => ViewConversation())">
+                    @L["View"]
+                </MudButton>
+                @if (Conversation.Status == ConversationStatus.Active)
+                {
+                    <MudButton Size="Size.Small"
+                              Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Reply"
+                              OnClick="@(() => ReplyToConversation())">
+                        @L["Reply"]
+                    </MudButton>
+                }
+            </div>
+            <MudIconButton Icon="@Icons.Material.Filled.Download"
+                          Size="Size.Small"
+                          Color="Color.Default"
+                          Title="@L["Export conversation"]" />
+        </div>
+    </MudCardActions>
+</MudCard>
+
+<style>
+    .conversation-card {
+        transition: all 0.2s ease;
+        border: 1px solid var(--mud-palette-divider);
+    }
+    
+    .conversation-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        transform: translateY(-2px);
+    }
+    
+    .conversation-summary {
+        word-break: break-word;
+        hyphens: auto;
+    }
+</style>
+
+@code {
+    [Parameter] public ConversationDto Conversation { get; set; } = null!;
+    [Parameter] public EventCallback<ConversationDto> OnConversationClicked { get; set; }
+
+    private void ViewConversation()
+    {
+        Navigation.NavigateTo($"/agent/conversations/{Conversation.ConversationReference}");
+    }
+
+    private void ReplyToConversation()
+    {
+        Navigation.NavigateTo($"/agent/conversations/{Conversation.ConversationReference}#reply");
+    }
+
+    private Color GetStatusColor(ConversationStatus status)
+    {
+        return status switch
+        {
+            ConversationStatus.Active => Color.Success,
+            ConversationStatus.Completed => Color.Secondary,
+            ConversationStatus.Abandoned => Color.Error,
+            ConversationStatus.Archived => Color.Info,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetPriorityColor(int priority)
+    {
+        return priority switch
+        {
+            3 => Color.Error,      // Critical
+            2 => Color.Warning,    // High
+            _ => Color.Info        // Standard
+        };
+    }
+
+    private string GetPriorityIcon(int priority)
+    {
+        return priority switch
+        {
+            3 => Icons.Material.Filled.PriorityHigh,
+            2 => Icons.Material.Filled.KeyboardArrowUp,
+            _ => Icons.Material.Filled.Remove
+        };
+    }
+
+    private string GetPriorityText(int priority)
+    {
+        return priority switch
+        {
+            3 => L["Critical"],
+            2 => L["High"],
+            _ => L["Standard"]
+        };
+    }
+
+    private string GetTimeAgo(DateTime dateTime)
+    {
+        var timeSpan = DateTime.Now - dateTime;
+        
+        if (timeSpan.TotalMinutes < 1)
+            return L["Just now"];
+        else if (timeSpan.TotalMinutes < 60)
+            return $"{(int)timeSpan.TotalMinutes}m " + L["ago"];
+        else if (timeSpan.TotalHours < 24)
+            return $"{(int)timeSpan.TotalHours}h " + L["ago"];
+        else if (timeSpan.TotalDays < 7)
+            return $"{(int)timeSpan.TotalDays}d " + L["ago"];
+        else
+            return dateTime.ToString("MMM dd");
+    }
+}

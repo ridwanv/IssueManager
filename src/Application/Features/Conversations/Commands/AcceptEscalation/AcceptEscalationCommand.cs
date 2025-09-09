@@ -1,10 +1,12 @@
 ﻿using CleanArchitecture.Blazor.Application.Common.Interfaces.Caching;
+using System.ComponentModel.DataAnnotations;
 
 namespace CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AcceptEscalation;
 
 public class AcceptEscalationCommand : ICacheInvalidatorRequest<Result<Unit>>
 {
-    public string ConversationId { get; set; }
+    [Required]
+    public string ConversationId { get; set; } = string.Empty;
     
     public string[] CacheKeys => [
         $"ConversationContext_{ConversationId}",

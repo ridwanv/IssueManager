@@ -35,6 +35,7 @@ public class Conversation : BaseAuditableEntity, IMustHaveTenant
     public virtual ICollection<ConversationMessage> Messages { get; set; } = new List<ConversationMessage>();
     public virtual ICollection<ConversationParticipant> Participants { get; set; } = new List<ConversationParticipant>();
     public virtual ICollection<ConversationHandoff> Handoffs { get; set; } = new List<ConversationHandoff>();
+    public virtual ConversationInsight? ConversationInsight { get; set; }
 
     public bool IsEscalated => Mode == ConversationMode.Human || Mode == ConversationMode.Escalating;
     public bool IsActive => Status == ConversationStatus.Active;

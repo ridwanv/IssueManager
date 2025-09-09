@@ -1,4 +1,4 @@
-using CleanArchitecture.Blazor.Application.Common.Interfaces;
+﻿using CleanArchitecture.Blazor.Application.Common.Interfaces;
 using CleanArchitecture.Blazor.Application.Features.Issues.Caching;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Events;
@@ -28,10 +28,10 @@ public class IssueIntakeCommandHandler : IRequestHandler<IssueIntakeCommand, Res
         try
         {
             await using var db = await _dbContextFactory.CreateAsync(cancellationToken);
-            
-            // Find or create contact
-            var contact = await FindOrCreateContactAsync(db, request.ReporterPhone, request.ReporterName, cancellationToken);
-            
+
+            //// Find or create contact
+            var contact = await FindOrCreateContactAsync(db, request.ReporterPhone, request.ReporterName,request.TenantId, cancellationToken);
+            var conversation = await db.Conversations.FirstOrDefaultAsync(x => x.ConversationReference == request.ConversationReference);
             // Generate unique reference number with retry logic
             var referenceNumber = await GenerateUniqueReferenceNumberAsync(cancellationToken);
             
@@ -63,12 +63,12 @@ public class IssueIntakeCommandHandler : IRequestHandler<IssueIntakeCommand, Res
                 description: request.Description,
                 category: category,
                 priority: priority,
-                reporterContactId: contact.Id,
-                tenantId: contact.TenantId,
+                reporterContactId: null,
+                tenantId: request.TenantId,
                 sourceMessageIds: request.SourceMessageIds,
                 whatsAppMetadata: whatsAppMetadata,
                 consentFlag: request.ConsentFlag,
-                conversationId: request.ConversationId
+                conversationId: conversation.Id
             );
             
             // Set legacy fields for backward compatibility
@@ -92,7 +92,7 @@ public class IssueIntakeCommandHandler : IRequestHandler<IssueIntakeCommand, Res
                         SizeBytes = attachmentData.Size,
                         CreatedUtc = DateTime.UtcNow,
                         ScanStatus = "Pending",
-                        TenantId = contact.TenantId
+                        TenantId = null
                     };
                     issue.Attachments.Add(attachment);
                 }
@@ -190,7 +190,7 @@ public class IssueIntakeCommandHandler : IRequestHandler<IssueIntakeCommand, Res
         await db.SaveChangesAsync(cancellationToken);
     }
     
-    private async Task<Contact> FindOrCreateContactAsync(IApplicationDbContext db, string phone, string? name, CancellationToken cancellationToken)
+    private async Task<Contact> FindOrCreateContactAsync(IApplicationDbContext db, string phone, string? name,string? tenantId, CancellationToken cancellationToken)
     {
         // Try to find existing contact by phone number (with tenant isolation)
         var existingContact = await db.Contacts
@@ -213,6 +213,7 @@ public class IssueIntakeCommandHandler : IRequestHandler<IssueIntakeCommand, Res
             PhoneNumber = phone,
             Name = name,
             Description = "Auto-created from WhatsApp issue intake",
+            TenantId = tenantId
             // TenantId will be set by the system based on current context
         };
         

@@ -12,6 +12,7 @@ public interface IApplicationHubWrapper
     Task BroadcastConversationCompleted(string conversationId, string agentId);
     Task BroadcastAgentStatusChanged(string agentId, string status);
     Task BroadcastNewConversationMessage(string conversationId, string from, string message, bool isFromAgent);
+    Task BroadcastNewMessageToConversationGroup(string conversationId, object messageDto);
     
     // Multi-agent popup methods
     Task BroadcastEscalationPopupToAvailableAgents(object escalationPopupDto);

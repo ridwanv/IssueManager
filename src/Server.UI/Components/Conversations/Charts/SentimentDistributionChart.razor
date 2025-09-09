@@ -1,0 +1,147 @@
+@using ApexCharts
+@using Microsoft.Extensions.Localization
+@using CleanArchitecture.Blazor.Server.UI.Services
+@using MudBlazor
+
+@inject IStringLocalizer<SentimentDistributionChart> L
+@inject LayoutService LayoutService
+
+@if (SentimentData?.Any() == true && ChartData?.Any() == true && Options != null)
+{
+    <ApexChart TItem="SentimentChartData" 
+               Options="Options" 
+               @ref="Chart"
+               Height="320">
+        
+        <ApexPointSeries TItem="SentimentChartData"
+                         Items="ChartData"
+                         Name="Conversations"
+                         XValue="@(e => e.Label)"
+                         YValue="@(e => (decimal)e.Value)"
+                         SeriesType="SeriesType.Donut" />
+    </ApexChart>
+}
+else
+{
+    <div class="d-flex justify-center align-center" style="height: 320px;">
+        <MudText Typo="Typo.body1" Color="Color.Default">@L["No data available"]</MudText>
+    </div>
+}
+
+@code {
+    [Parameter] public Dictionary<string, int> SentimentData { get; set; } = default!;
+
+    private ApexChart<SentimentChartData>? Chart;
+    private ApexChartOptions<SentimentChartData> Options = new();
+    private List<SentimentChartData> ChartData = new();
+
+    private readonly Dictionary<string, string> SentimentColors = new()
+    {
+        { "Positive", "#4CAF50" },
+        { "Neutral", "#FF9800" },
+        { "Negative", "#F44336" }
+    };
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (SentimentData?.Any() == true)
+        {
+            try
+            {
+                PrepareChartData();
+                SetupChartOptions();
+            }
+            catch (Exception ex)
+            {
+                // Log the exception if needed
+                Console.WriteLine($"Chart setup error: {ex.Message}");
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Let ApexChart handle its own rendering lifecycle
+        // Manual Chart.RenderAsync() calls can cause race conditions and NullReferenceException
+        return Task.CompletedTask;
+    }
+
+    private void PrepareChartData()
+    {
+        if (SentimentData?.Any() != true)
+        {
+            ChartData = new List<SentimentChartData>();
+            return;
+        }
+
+        ChartData = SentimentData.Select(kvp => new SentimentChartData
+        {
+            Label = kvp.Key,
+            Value = kvp.Value,
+            Sentiment = kvp.Key
+        }).Where(d => d.Value > 0).ToList(); // Only include non-zero values
+    }
+
+    private void SetupChartOptions()
+    {
+        if (ChartData?.Any() != true) return;
+        
+        var isDarkMode = LayoutService?.IsDarkMode ?? false;
+        
+        Options = new ApexChartOptions<SentimentChartData>
+        {
+            Theme = new Theme { Mode = isDarkMode ? Mode.Dark : Mode.Light },
+            Chart = new Chart { Background = "transparent" },
+            Colors = ChartData.Select(d => SentimentColors.GetValueOrDefault(d.Sentiment, "#9E9E9E")).ToList(),
+            Legend = new Legend
+            {
+                Position = LegendPosition.Bottom,
+                HorizontalAlign = ApexCharts.Align.Center
+            },
+            Tooltip = new Tooltip
+            {
+                Y = new TooltipY
+                {
+                    Formatter = @"function(value) { return value + ' conversations'; }"
+                }
+            },
+            PlotOptions = new PlotOptions
+            {
+                Pie = new PlotOptionsPie
+                {
+                    Donut = new PlotOptionsDonut
+                    {
+                        Size = "65%",
+                        Labels = new DonutLabels
+                        {
+                            Show = true,
+                            Total = new DonutLabelTotal
+                            {
+                                Show = true,
+                                Label = L?["Total"] ?? "Total",
+                                Formatter = @"function(opts) { 
+                                    return opts.config.series.reduce((a, b) => a + b, 0) + ' conversations'; 
+                                }"
+                            }
+                        }
+                    }
+                }
+            },
+            DataLabels = new DataLabels
+            {
+                Enabled = true,
+                Formatter = @"function(val, opts) { 
+                    return Math.round(val) + '%'; 
+                }"
+            }
+        };
+    }
+
+    private class SentimentChartData
+    {
+        public string Label { get; set; } = string.Empty;
+        public int Value { get; set; }
+        public string Sentiment { get; set; } = string.Empty;
+    }
+}

@@ -1,6 +1,7 @@
 ﻿@page "/agent/pending-conversations"
 @using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
 @using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAllConversations
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AcceptEscalation
 @using CleanArchitecture.Blazor.Domain.Enums
 @using CleanArchitecture.Blazor.Application.Common.Security
 @using CleanArchitecture.Blazor.Server.UI.Components.Shared
@@ -231,22 +232,37 @@
         loading = true;
         try
         {
+            // We need to get escalating conversations that haven't been assigned to an agent yet
+            // Since GetAllConversationsQuery doesn't support filtering by Mode, we need to filter client-side
+            // or create a specialized query. For now, let's get all active conversations and filter them.
             var query = new GetAllConversationsQuery(
-                Status: "Active", // Only active conversations
-                UserId: null,
+                Status: "Active", // Must be active status
+                UserId: null, // Not filtering by originating user
                 SearchTerm: searchString,
                 StartDate: null,
                 EndDate: null,
-                Page: currentPage,
-                PageSize: pageSize,
-                SortBy: "Created", // Sort by creation time for pending queue
-                SortDescending: false // Oldest first (FIFO)
+                Page: 1, // Get more results to filter
+                PageSize: pageSize * 3, // Get more to account for filtering
+                SortBy: "Created",
+                SortDescending: false
             );
 
             var result = await Mediator.Send(query);
-            if (result.Succeeded)
+            if (result.Succeeded && result.Data?.Items != null)
             {
-                conversations = result.Data;
+                // Filter for escalating conversations without an assigned agent
+                var pendingItems = result.Data.Items
+                    .Where(c => c.Mode == ConversationMode.Escalating && 
+                               string.IsNullOrEmpty(c.CurrentAgentId))
+                    .Take(pageSize)
+                    .ToList();
+                
+                // Create a new paginated result with filtered data
+                conversations = new PaginatedData<ConversationDto>(
+                    pendingItems,
+                    pendingItems.Count, // Total items is what we found
+                    currentPage,
+                    pageSize);
             }
             else
             {
@@ -297,16 +313,21 @@
         acceptingConversation.Add(conversationId);
         try
         {
-            // TODO: Implement accept conversation command
-            // var command = new AcceptConversationCommand(conversationId);
-            // var result = await Mediator.Send(command);
+            var command = new AcceptEscalationCommand { ConversationId = conversationId };
+            var result = await Mediator.Send(command);
             
-            // For now, show success message and refresh list
-            Snackbar.Add($"Conversation {conversationId} accepted successfully", Severity.Success);
-            await LoadPendingConversations();
-            
-            // Navigate to the conversation
-            Navigation.NavigateTo($"/agent/conversations/{conversationId}");
+            if (result.Succeeded)
+            {
+                Snackbar.Add($"Conversation {conversationId} accepted successfully", Severity.Success);
+                await LoadPendingConversations();
+                
+                // Navigate to the conversation
+                Navigation.NavigateTo($"/agent/conversations/{conversationId}");
+            }
+            else
+            {
+                Snackbar.Add($"Error accepting conversation: {string.Join(", ", result.Errors)}", Severity.Error);
+            }
         }
         catch (Exception ex)
         {

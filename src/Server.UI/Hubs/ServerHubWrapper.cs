@@ -104,7 +104,32 @@ public class ServerHubWrapper : IApplicationHubWrapper
 
     public async Task BroadcastNewConversationMessage(string conversationId, string from, string message, bool isFromAgent)
     {
+        // Create a proper ConversationMessageDto for the NewMessageReceived event
+        var messageDto = new
+        {
+            ConversationId = conversationId,
+            BotFrameworkConversationId = conversationId,
+            Content = message,
+            Role = isFromAgent ? "agent" : "user",
+            UserName = from,
+            Timestamp = DateTime.UtcNow
+        };
+
+        // Send NewMessageReceived to conversation group (for ConversationDetail page)
+        await _hubContext.Clients.Group($"Conversation_{conversationId}").NewMessageReceived(messageDto).ConfigureAwait(false);
+        
+        // Also send legacy NewConversationMessage to all clients (for global notification components)
         await _hubContext.Clients.All.NewConversationMessage(conversationId, from, message, isFromAgent).ConfigureAwait(false);
+    }
+
+    public async Task BroadcastNewMessageToConversationGroup(string conversationId, object messageDto)
+    {
+        Console.WriteLine($"[ServerHubWrapper] BroadcastNewMessageToConversationGroup - ConversationId: {conversationId}, Group: Conversation_{conversationId}");
+        
+        // Send the proper ConversationMessageDto to the conversation group
+        await _hubContext.Clients.Group($"Conversation_{conversationId}").NewMessageReceived(messageDto).ConfigureAwait(false);
+        
+        Console.WriteLine($"[ServerHubWrapper] Sent NewMessageReceived to group Conversation_{conversationId}");
     }
 
     // Multi-agent popup methods

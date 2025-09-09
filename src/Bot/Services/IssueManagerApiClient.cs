@@ -2,6 +2,7 @@
 using System.Text;
 using System.Text.Json;
 using IssueManager.Bot.Models;
+using IssueManager.Shared.DTOs;
 
 namespace IssueManager.Bot.Services;
 
@@ -94,6 +95,79 @@ public class IssueManagerApiClient
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error when creating issue via API");
+            return await Result<Guid>.FailureAsync("An unexpected error occurred");
+        }
+    }
+
+    /// <summary>
+    /// Creates a new issue via intake process using the API
+    /// </summary>
+    /// <param name="dto">The issue intake DTO</param>
+    /// <returns>Result with the created issue ID</returns>
+    public async Task<Result<Guid>> CreateIssueIntakeAsync(IssueIntakeDto dto)
+    {
+        try
+        {
+            _logger.LogInformation("Creating issue via intake API for summary: {Summary}", dto.Summary);
+
+            var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync("/api/issues/intake", content);
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonSerializer.Deserialize<Result<Guid>>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                _logger.LogInformation("Issue created successfully via intake API with ID: {IssueId}", result?.Data);
+                return result ?? await Result<Guid>.FailureAsync("Failed to deserialize API response");
+            }
+            else
+            {
+                _logger.LogError("Intake API call failed with status {StatusCode}: {Response}", response.StatusCode, responseContent);
+                
+                // Try to parse error response
+                try
+                {
+                    var errorResult = JsonSerializer.Deserialize<Result<Guid>>(responseContent, new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+                    
+                    if (errorResult != null && !string.IsNullOrEmpty(errorResult.ErrorMessage))
+                    {
+                        return errorResult;
+                    }
+                }
+                catch
+                {
+                    // If error parsing fails, return generic error
+                }
+
+                return await Result<Guid>.FailureAsync($"Intake API call failed with status {response.StatusCode}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP request failed when creating issue via intake");
+            return await Result<Guid>.FailureAsync("Failed to connect to Issue Manager API");
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "Request timeout when creating issue via intake");
+            return await Result<Guid>.FailureAsync("Request timeout - please try again");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error when creating issue via intake API");
             return await Result<Guid>.FailureAsync("An unexpected error occurred");
         }
     }

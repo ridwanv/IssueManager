@@ -1,5 +1,5 @@
-version: 4.43.0
-installed_at: '2025-09-06T08:40:45.041Z'
+version: 4.44.0
+installed_at: '2025-09-09T09:53:10.926Z'
 install_type: full
 agent: null
 ides_setup:
@@ -9,16 +9,19 @@ ides_setup:
 expansion_packs: []
 files:
   - path: .bmad-core\working-in-the-brownfield.md
-    hash: 2bf3551cbc498b47
+    hash: 07cc8eb6fc664bb8
     modified: false
   - path: .bmad-core\user-guide.md
     hash: fa8776b4e0bfa3f7
+    modified: false
+  - path: .bmad-core\install-manifest.yaml
+    hash: cfd1afb124163d6a
     modified: false
   - path: .bmad-core\enhanced-ide-development-workflow.md
     hash: 39beb3516c070e2b
     modified: false
   - path: .bmad-core\core-config.yaml
-    hash: 073cf6d2527c545d
+    hash: 94ce5b2faad48235
     modified: false
   - path: .bmad-core\workflows\greenfield-ui.yaml
     hash: 2b595f235c095790
@@ -45,7 +48,7 @@ files:
     hash: 34df6ead8b91abfc
     modified: false
   - path: .bmad-core\tasks\validate-next-story.md
-    hash: a5a382fe9a8d9443
+    hash: 75e84133d364d973
     modified: false
   - path: .bmad-core\tasks\trace-requirements.md
     hash: cb3e06cc0b957948

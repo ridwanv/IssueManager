@@ -1,0 +1,151 @@
+@using CleanArchitecture.Blazor.Application.Features.Contacts.DTOs
+
+@if (Contact != null)
+{
+    <MudCard Class="mb-4" Elevation="2">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <div class="d-flex align-center">
+                    <MudIcon Icon="Icons.Material.Filled.Person" Class="mr-2" Color="Color.Primary" />
+                    <MudText Typo="Typo.h6">Reporter Information</MudText>
+                </div>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent Class="pt-2">
+            <MudGrid>
+                <!-- Name and Primary Contact -->
+                <MudItem xs="12" md="6">
+                    <MudStack Spacing="3">
+                        <!-- Name -->
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="Icons.Material.Filled.AccountCircle" 
+                                     Class="mr-2" 
+                                     Size="Size.Small" 
+                                     Color="Color.Secondary" />
+                            <div>
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Name</MudText>
+                                <MudText Typo="Typo.body1" Class="font-weight-medium">@Contact.Name</MudText>
+                            </div>
+                        </div>
+
+                        <!-- Phone Number (Primary Contact) -->
+                        @if (!string.IsNullOrWhiteSpace(Contact.PhoneNumber))
+                        {
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="Icons.Material.Filled.WhatsApp" 
+                                         Class="mr-2" 
+                                         Size="Size.Small" 
+                                         Color="Color.Success" />
+                                <div class="flex-grow-1">
+                                    <div class="d-flex align-center gap-2">
+                                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">WhatsApp</MudText>
+                                        <MudChip T="string" 
+                                                 Size="Size.Small" 
+                                                 Color="Color.Success" 
+                                                 Variant="Variant.Text">
+                                            Primary
+                                        </MudChip>
+                                    </div>
+                                    <MudText Typo="Typo.body1">@Contact.PhoneNumber</MudText>
+                                </div>
+                            </div>
+                        }
+                    </MudStack>
+                </MudItem>
+
+                <!-- Additional Contact Methods -->
+                <MudItem xs="12" md="6">
+                    <MudStack Spacing="3">
+                        <!-- Email -->
+                        @if (!string.IsNullOrWhiteSpace(Contact.Email))
+                        {
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="Icons.Material.Filled.Email" 
+                                         Class="mr-2" 
+                                         Size="Size.Small" 
+                                         Color="Color.Info" />
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Email</MudText>
+                                    <MudText Typo="Typo.body1">@Contact.Email</MudText>
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Country -->
+                        @if (!string.IsNullOrWhiteSpace(Contact.Country))
+                        {
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="Icons.Material.Filled.LocationOn" 
+                                         Class="mr-2" 
+                                         Size="Size.Small" 
+                                         Color="Color.Warning" />
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Location</MudText>
+                                    <MudText Typo="Typo.body1">@Contact.Country</MudText>
+                                </div>
+                            </div>
+                        }
+                    </MudStack>
+                </MudItem>
+
+                <!-- Description (Full Width) -->
+                @if (!string.IsNullOrWhiteSpace(Contact.Description))
+                {
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <div class="d-flex align-start">
+                            <MudIcon Icon="Icons.Material.Filled.Notes" 
+                                     Class="mr-2 mt-1" 
+                                     Size="Size.Small" 
+                                     Color="Color.Secondary" />
+                            <div>
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-1">Notes</MudText>
+                                <MudText Typo="Typo.body2">@Contact.Description</MudText>
+                            </div>
+                        </div>
+                    </MudItem>
+                }
+
+                <!-- Fallback for Missing Contact Info -->
+                @if (string.IsNullOrWhiteSpace(Contact.PhoneNumber) && 
+                     string.IsNullOrWhiteSpace(Contact.Email))
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="Icons.Material.Filled.Info" Class="mr-2" Size="Size.Small" />
+                                <MudText Typo="Typo.body2">No contact methods available for this reporter</MudText>
+                            </div>
+                        </MudAlert>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+}
+else
+{
+    <!-- Fallback for null contact -->
+    <MudCard Class="mb-4" Elevation="2">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <div class="d-flex align-center">
+                    <MudIcon Icon="Icons.Material.Filled.Person" Class="mr-2" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h6">Reporter Information</MudText>
+                </div>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="Icons.Material.Filled.Warning" Class="mr-2" Size="Size.Small" />
+                    <MudText Typo="Typo.body2">Reporter information is not available</MudText>
+                </div>
+            </MudAlert>
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Parameter] public ContactDto? Contact { get; set; }
+}

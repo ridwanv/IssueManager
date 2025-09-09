@@ -66,6 +66,12 @@ public class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
             .HasForeignKey(m => m.ConversationId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Configure one-to-one relationship with ConversationInsight
+        builder.HasOne(x => x.ConversationInsight)
+            .WithOne(ci => ci.Conversation)
+            .HasForeignKey<ConversationInsight>(ci => ci.ConversationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.Ignore(e => e.DomainEvents);
     }
 }

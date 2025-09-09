@@ -424,7 +424,6 @@
     private IDisposable? _agentJoinedHandler;
     private IDisposable? _agentLeftHandler;
     private IDisposable? _conversationViewersUpdatedHandler;
-    private IDisposable? _legacyNewConversationMessageHandler;
     private IDisposable? _legacyConversationAssignedHandler;
     private IDisposable? _legacyConversationCompletedHandler;
 
@@ -433,7 +432,7 @@
         _originalTitle = "Conversation Details";
         await LoadConversation();
         await InitializeSignalR();
-        await JoinConversationViewers();
+        JoinConversationViewers();
     }
     
     protected override async Task OnParametersSetAsync()
@@ -455,7 +454,7 @@
         loading = true;
         try
         {
-            var query = new GetConversationByIdQuery(ConversationId);
+            var query = new GetConversationByIdQuery(null,ConversationId);
             var result = await Mediator.Send(query);
             
             if (result.Succeeded)
@@ -542,6 +541,7 @@
 
                 // Subscribe to real-time message updates (store disposables so only this component unsubscribes its own handlers)
                 _newMessageReceivedHandler = _hubConnection.On<ConversationMessageDto>("NewMessageReceived", OnNewMessageReceived);
+                Console.WriteLine($"[ConversationDetail] Subscribed to NewMessageReceived events for conversation: {ConversationId}");
 
                 // Subscribe to conversation status changes
                 _conversationStatusChangedHandler = _hubConnection.On<string, ConversationStatus>("ConversationStatusChanged", OnConversationStatusChanged);
@@ -554,15 +554,16 @@
                 _agentLeftHandler = _hubConnection.On<string, string>("AgentLeftConversation", OnAgentLeftConversation);
                 _conversationViewersUpdatedHandler = _hubConnection.On<string, List<ConversationViewerDto>>("ConversationViewersUpdated", OnConversationViewersUpdated);
 
-                // Legacy message handlers for backward compatibility
-                _legacyNewConversationMessageHandler = _hubConnection.On<string, string, string, bool>("NewConversationMessage", OnLegacyNewConversationMessage);
+                // Subscribe to conversation assignment and completion (legacy handlers for backward compatibility)
                 _legacyConversationAssignedHandler = _hubConnection.On<int, string, string>("ConversationAssigned", OnConversationAssigned);
                 _legacyConversationCompletedHandler = _hubConnection.On<int, string>("ConversationCompleted", OnConversationCompleted);
 
                 UpdateConnectionStatus("connected");
                 
                 // Join conversation group for targeted updates
+                Console.WriteLine($"[ConversationDetail] Joining conversation group: Conversation_{ConversationId}");
                 await _hubConnection.InvokeAsync("JoinConversationGroup", ConversationId);
+                Console.WriteLine($"[ConversationDetail] Successfully joined conversation group for: {ConversationId}");
             }
             else
             {
@@ -601,29 +602,64 @@
 
     private async Task OnNewMessageReceived(ConversationMessageDto message)
     {
+        Console.WriteLine($"[ConversationDetail] OnNewMessageReceived - MessageId: {message.Id}, ConversationId: {message.ConversationId}, BotFrameworkId: {message.BotFrameworkConversationId}, Content: {message.Content}, CurrentConversationId: {ConversationId}");
+        
+        // Test: Log that we received the SignalR event
+        Console.WriteLine($"[ConversationDetail] 🔥 SignalR event received! Message: {message.Content}");
+        
         await InvokeAsync(async () =>
         {
             if (conversationDetails?.Messages != null)
             {
-                conversationDetails.Messages.Add(message);
-                
-                // Check if user is near bottom for auto-scroll
-                var shouldScroll = await JSRuntime.InvokeAsync<bool>("conversationRealtime.isNearBottom", "messages-container");
-                
-                StateHasChanged();
-                
-                if (shouldScroll)
+                // Check if this message belongs to the current conversation
+                if (message.BotFrameworkConversationId == ConversationId || 
+                    message.ConversationId.ToString() == ConversationId)
                 {
-                    await ScrollToBottom();
+                    Console.WriteLine($"[ConversationDetail] ✅ Message belongs to current conversation: {message.Content}");
+                    conversationDetails.Messages.Add(message);
+                    Console.WriteLine($"[ConversationDetail] ✅ Message added to list. Total messages: {conversationDetails.Messages.Count}");
+                    
+                    // Check if user is near bottom for auto-scroll
+                    var shouldScroll = false;
+                    try
+                    {
+                        shouldScroll = await JSRuntime.InvokeAsync<bool>("conversationRealtime.isNearBottom", "messages-container");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ConversationDetail] Failed to check isNearBottom: {ex.Message}");
+                        // Default to true to ensure auto-scroll when JS function is not available
+                        shouldScroll = true;
+                    }
+                    
+                    StateHasChanged();
+                    
+                    if (shouldScroll)
+                    {
+                        Console.WriteLine($"[ConversationDetail] Auto-scrolling to bottom");
+                        await ScrollToBottom();
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[ConversationDetail] User not at bottom, not auto-scrolling");
+                    }
+                    
+                    // Handle notifications if page is not visible
+                    if (!await IsPageVisible())
+                    {
+                        _unreadMessages++;
+                        await UpdateBrowserTitle();
+                        await PlayNotificationSound();
+                    }
                 }
-                
-                // Handle notifications if page is not visible
-                if (!await IsPageVisible())
+                else
                 {
-                    _unreadMessages++;
-                    await UpdateBrowserTitle();
-                    await PlayNotificationSound();
+                    Console.WriteLine($"[ConversationDetail] Ignoring message for different conversation: {message.BotFrameworkConversationId} vs {ConversationId}");
                 }
+            }
+            else
+            {
+                Console.WriteLine("[ConversationDetail] conversationDetails.Messages is null");
             }
         });
     }
@@ -717,32 +753,6 @@
             {
                 _conversationViewers = viewers;
                 StateHasChanged();
-            });
-        }
-    }
-
-    // Legacy handler for backward compatibility
-    private async Task OnLegacyNewConversationMessage(string conversationId, string from, string message, bool isFromAgent)
-    {
-        // Only update if this is our conversation
-        if (conversationId == ConversationId && conversationDetails != null)
-        {
-            await InvokeAsync(async () =>
-            {
-                // Reload conversation to get updated messages
-                await LoadConversation();
-                StateHasChanged();
-                
-                // Scroll to bottom of messages
-                await ScrollToBottom();
-                
-                // Handle notifications if page is not visible
-                if (!await IsPageVisible())
-                {
-                    _unreadMessages++;
-                    await UpdateBrowserTitle();
-                    await PlayNotificationSound();
-                }
             });
         }
     }
@@ -857,7 +867,7 @@
         }
     }
 
-    private async Task JoinConversationViewers()
+    private void JoinConversationViewers()
     {
         try
         {
@@ -909,7 +919,7 @@
 
         var result = await dialog.Result;
         
-        if (!result.Canceled)
+        if (result != null && !result.Canceled)
         {
             // Refresh the conversation details to show the updated status
             await LoadConversation();
@@ -932,7 +942,6 @@
                 _agentJoinedHandler?.Dispose();
                 _agentLeftHandler?.Dispose();
                 _conversationViewersUpdatedHandler?.Dispose();
-                _legacyNewConversationMessageHandler?.Dispose();
                 _legacyConversationAssignedHandler?.Dispose();
                 _legacyConversationCompletedHandler?.Dispose();
                 

@@ -1,0 +1,325 @@
+@page "/conversations/analytics"
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationDashboardMetrics
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationPerformanceStats
+@using CleanArchitecture.Blazor.Server.UI.Components.Conversations
+@using CleanArchitecture.Blazor.Server.UI.Components.Conversations.Charts
+@using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity
+@using CleanArchitecture.Blazor.Domain.Common
+@using CleanArchitecture.Blazor.Server.UI.Services
+@using CleanArchitecture.Blazor.Server.UI.Hubs
+@using Microsoft.AspNetCore.SignalR.Client
+@using ApexCharts
+@using MudBlazor
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+@using MediatR
+@using System.ComponentModel
+@implements IDisposable
+
+@attribute [Authorize(Policy = Permissions.Conversations.View)]
+@inject IStringLocalizer<Analytics> L
+@inject IMediator Mediator
+@inject LayoutService LayoutService
+@inject NavigationManager NavigationManager
+
+<PageTitle>@Title</PageTitle>
+
+<MudStack Spacing="4">
+    <!-- Header Section -->
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudStack Row Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Analytics" Color="Color.Primary" Size="MudBlazor.Size.Large" />
+                <MudText Typo="Typo.h4" Color="Color.Primary">@L["Conversation Analytics Dashboard"]</MudText>
+            </MudStack>
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudDateRangePicker @bind-DateRange="_dateRange" 
+                                  Label="@L["Date Range"]"
+                                  Variant="Variant.Outlined"
+                                  MaxDate="DateTime.Today"
+                                  DateChanged="OnDateRangeChanged"
+                                  Class="mr-2" />
+                <MudTooltip Text="Refresh Analytics">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                                  Color="Color.Primary" 
+                                  Size="MudBlazor.Size.Medium" 
+                                  OnClick="RefreshAnalytics"
+                                  Disabled="_loading" />
+                </MudTooltip>
+                <MudTooltip Text="Export Report">
+                    <MudIconButton Icon="@Icons.Material.Filled.Download" 
+                                  Color="Color.Secondary" 
+                                  Size="MudBlazor.Size.Medium" 
+                                  OnClick="ExportReport"
+                                  Disabled="_loading" />
+                </MudTooltip>
+            </MudStack>
+        </MudStack>
+        
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-4" />
+        }
+    </MudPaper>
+
+    <!-- KPI Cards Section -->
+    @if (_metrics != null)
+    {
+        <ConversationKpiCardsComponent Metrics="_metrics" />
+    }
+
+    <!-- Charts Section -->
+    <MudGrid>
+        <!-- Sentiment Distribution Chart -->
+        <MudItem xs="12" sm="6" md="6">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 400px;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Sentiment Distribution"]</MudText>
+                @if (_metrics?.SentimentDistribution?.Any() == true)
+                {
+                    <SentimentDistributionChart SentimentData="_metrics.SentimentDistribution" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No sentiment data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Status Distribution Chart -->
+        <MudItem xs="12" sm="6" md="6">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 400px;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Status Distribution"]</MudText>
+                @if (_metrics?.StatusDistribution?.Any() == true)
+                {
+                    <ConversationStatusDistributionChart StatusData="_metrics.StatusDistribution" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No status data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Volume Trends Chart -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 450px;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Conversation Volume Trends"]</MudText>
+                @if (_performanceStats?.DailyVolumeChart?.Any() == true)
+                {
+                    <ConversationVolumeTrendsChart VolumeData="_performanceStats.DailyVolumeChart" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No volume trend data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Sentiment Trends Chart -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 450px;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Sentiment Trends Over Time"]</MudText>
+                @if (_performanceStats?.SentimentTrendsChart?.Any() == true)
+                {
+                    <SentimentTrendsChart SentimentTrendsData="_performanceStats.SentimentTrendsChart" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No sentiment trend data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Resolution Performance -->
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 350px;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Resolution Time Analysis"]</MudText>
+                @if (_performanceStats != null)
+                {
+                    <ConversationResolutionAnalysis PerformanceStats="_performanceStats" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No resolution time data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Hourly Distribution -->
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 350px;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Hourly Distribution"]</MudText>
+                @if (_performanceStats?.HourlyDistribution?.Any() == true)
+                {
+                    <ConversationHourlyDistributionChart HourlyData="_performanceStats.HourlyDistribution" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No hourly distribution data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Performance Tables Section -->
+    <MudGrid>
+        <!-- Agent Performance -->
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 400px; overflow-y: auto;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Agent Performance"]</MudText>
+                @if (_performanceStats?.AgentPerformance?.Any() == true)
+                {
+                    <AgentPerformanceTable Agents="_performanceStats.AgentPerformance" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No agent performance data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Channel Performance -->
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 400px; overflow-y: auto;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Channel Performance"]</MudText>
+                @if (_performanceStats?.ChannelPerformance?.Any() == true)
+                {
+                    <ConversationChannelPerformanceTable Channels="_performanceStats.ChannelPerformance" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No channel data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Resolution Category Performance -->
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 400px; overflow-y: auto;">
+                <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">@L["Resolution Category Performance"]</MudText>
+                @if (_performanceStats?.ResolutionCategoryPerformance?.Any() == true)
+                {
+                    <ResolutionCategoryPerformanceTable Categories="_performanceStats.ResolutionCategoryPerformance" />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">@L["No resolution category data available"]</MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudStack>
+
+@code {
+    [CascadingParameter] private UserProfile? UserProfile { get; set; }
+
+    private string Title { get; set; } = "Conversation Analytics";
+    private bool _loading = true;
+    private DateRange? _dateRange = new(DateTime.Today.AddDays(-30), DateTime.Today);
+    
+    private ConversationDashboardMetricsDto? _metrics;
+    private ConversationPerformanceStatsDto? _performanceStats;
+    private HubConnection? _hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Title = L["Conversation Analytics"];
+        LayoutService.MajorUpdateOccurred += LayoutServiceOnMajorUpdateOccurred;
+        await InitializeSignalRConnection();
+        await LoadAnalyticsData();
+    }
+
+    private async Task InitializeSignalRConnection()
+    {
+        try
+        {
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(NavigationManager.ToAbsoluteUri(ISignalRHub.Url))
+                .Build();
+
+            _hubConnection.On<ConversationDto>("ConversationCreated", async (conversation) =>
+            {
+                await LoadAnalyticsData();
+            });
+
+            _hubConnection.On<ConversationDto>("ConversationUpdated", async (conversation) =>
+            {
+                await LoadAnalyticsData();
+            });
+
+            _hubConnection.On("ConversationListUpdated", async () =>
+            {
+                await LoadAnalyticsData();
+            });
+
+            await _hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR connection error: {ex.Message}");
+        }
+    }
+
+    private async Task LoadAnalyticsData()
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            // Load dashboard metrics
+            var metricsQuery = new GetConversationDashboardMetricsQuery();
+            var metricsResult = await Mediator.Send(metricsQuery);
+            _metrics = metricsResult.Succeeded ? metricsResult.Data : null;
+
+            // Load performance stats
+            var days = _dateRange != null ? 
+                (int)(_dateRange.End?.Date.Subtract(_dateRange.Start?.Date ?? DateTime.Today) ?? TimeSpan.FromDays(30)).TotalDays + 1 
+                : 30;
+            
+            var performanceQuery = new GetConversationPerformanceStatsQuery(days);
+            var performanceResult = await Mediator.Send(performanceQuery);
+            _performanceStats = performanceResult.Succeeded ? performanceResult.Data : null;
+        }
+        catch (Exception ex)
+        {
+            // Handle errors
+            Console.WriteLine($"Error loading analytics: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnDateRangeChanged(DateRange? dateRange)
+    {
+        _dateRange = dateRange;
+        await LoadAnalyticsData();
+    }
+
+    private async Task RefreshAnalytics()
+    {
+        await LoadAnalyticsData();
+    }
+
+    private async Task ExportReport()
+    {
+        // TODO: Implement PDF/Excel export functionality
+        await Task.CompletedTask;
+    }
+
+    private async Task LayoutServiceOnMajorUpdateOccurred()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        LayoutService.MajorUpdateOccurred -= LayoutServiceOnMajorUpdateOccurred;
+        _hubConnection?.DisposeAsync();
+        GC.SuppressFinalize(this);
+    }
+}

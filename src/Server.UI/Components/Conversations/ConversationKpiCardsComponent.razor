@@ -1,0 +1,202 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationDashboardMetrics
+@using CleanArchitecture.Blazor.Domain.Enums
+@using MudBlazor
+@using Microsoft.Extensions.Localization
+
+@inject IStringLocalizer<ConversationKpiCardsComponent> L
+
+<MudGrid>
+    <!-- Total Conversations -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center" Style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;" Elevation="4">
+            <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Large" Color="Color.Inherit" Class="mb-2" />
+            <MudText Typo="Typo.h4" Color="Color.Inherit">@Metrics.TotalConversations</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Inherit">@L["Total Conversations"]</MudText>
+            @if (Metrics.TrendPercentage != 0)
+            {
+                <MudChip T="string" Size="Size.Small" Color="GetTrendColor(Metrics.TrendDirection)" Variant="Variant.Filled" Class="mt-1">
+                    @Metrics.TrendIndicator
+                </MudChip>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <!-- Average Resolution Time -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center" Style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;" Elevation="4">
+            <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Large" Color="Color.Inherit" Class="mb-2" />
+            <MudText Typo="Typo.h4" Color="Color.Inherit">@Metrics.AverageResolutionTimeFormatted</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Inherit">@L["Avg Resolution Time"]</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Inherit">
+                @L["Completed"]: @Metrics.CompletedLast24Hours
+            </MudText>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Average Sentiment Score -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center" Style="@($"{GetSentimentStyle(Metrics.AverageSentimentScore)}; color: white;")" Elevation="4">
+            <MudIcon Icon="@GetSentimentIcon(Metrics.AverageSentimentScore)" Size="Size.Large" Color="Color.Inherit" Class="mb-2" />
+            <MudText Typo="Typo.h4" Color="Color.Inherit">@Metrics.SentimentScoreFormatted</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Inherit">@L["Avg Sentiment"]</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Inherit">
+                @Metrics.SentimentLabel
+            </MudText>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Escalation Rate -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 text-center" Style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); color: #333;" Elevation="4">
+            <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Large" Color="@GetEscalationColor(Metrics.EscalationRate)" Class="mb-2" />
+            <MudText Typo="Typo.h4" Color="@GetEscalationColor(Metrics.EscalationRate)">@Metrics.EscalationRateFormatted</MudText>
+            <MudText Typo="Typo.body2" Color="@GetEscalationColor(Metrics.EscalationRate)">@L["Escalation Rate"]</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Default">
+                @Metrics.EscalatedConversations @L["escalated"]
+            </MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<!-- Second Row KPIs -->
+<MudGrid Class="mt-2">
+    <!-- Agent Response Time -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudCard>
+            <MudCardContent Class="pa-4 text-center">
+                <MudIcon Icon="@Icons.Material.Filled.Speed" 
+                        Size="Size.Large" 
+                        Color="@GetResponseTimeColor(Metrics.AgentResponseTimeMinutes)" 
+                        Class="mb-2" />
+                <MudText Typo="Typo.h6">@Metrics.AgentResponseTimeFormatted</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Default">@L["Agent Response Time"]</MudText>
+                <MudProgressLinear Value="@GetResponseTimeProgress(Metrics.AgentResponseTimeMinutes)" 
+                                  Color="@GetResponseTimeColor(Metrics.AgentResponseTimeMinutes)" 
+                                  Class="mt-2" />
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- Customer Satisfaction -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudCard>
+            <MudCardContent Class="pa-4 text-center">
+                <MudIcon Icon="@Icons.Material.Filled.ThumbUp" 
+                        Size="Size.Large" 
+                        Color="@GetSatisfactionColor(Metrics.CustomerSatisfactionScore)" 
+                        Class="mb-2" />
+                <MudText Typo="Typo.h6">@Metrics.CustomerSatisfactionFormatted</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Default">@L["Customer Satisfaction"]</MudText>
+                <MudProgressLinear Value="@Metrics.CustomerSatisfactionScore" 
+                                  Color="@GetSatisfactionColor(Metrics.CustomerSatisfactionScore)" 
+                                  Class="mt-2" />
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- Active vs New Conversations -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudCard>
+            <MudCardContent Class="pa-4 text-center">
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Large" Color="Color.Primary" Class="mb-2" />
+                <MudText Typo="Typo.h6">@Metrics.ActiveConversations</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Default">@L["Active Now"]</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Default">
+                    @L["New (24h)"]: @Metrics.NewConversationsLast24Hours
+                </MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- Status Summary -->
+    <MudItem xs="12" sm="6" md="3">
+        <MudCard>
+            <MudCardContent Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">@L["Status Summary"]</MudText>
+                <MudGrid>
+                    @foreach (var status in Metrics.StatusDistribution.OrderByDescending(s => s.Value))
+                    {
+                        <MudItem xs="12">
+                            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.caption">@status.Key.ToString()</MudText>
+                                <MudChip T="string" Color="@GetStatusColor(status.Key)" Size="Size.Small" Variant="Variant.Filled">
+                                    @status.Value
+                                </MudChip>
+                            </MudStack>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public ConversationDashboardMetricsDto Metrics { get; set; } = default!;
+
+    private Color GetTrendColor(string direction) => direction switch
+    {
+        "up" => Color.Success,
+        "down" => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetSentimentGradient(double score) => score switch
+    {
+        >= 0.1 => "#4caf50 0%, #8bc34a 100%", // Green gradient for positive
+        <= -0.1 => "#f44336 0%, #e91e63 100%", // Red gradient for negative
+        _ => "#ff9800 0%, #ffc107 100%" // Orange gradient for neutral
+    };
+
+    private string GetSentimentStyle(double score)
+    {
+        var gradient = GetSentimentGradient(score);
+        return $"background: linear-gradient(135deg, {gradient})";
+    }
+
+    private string GetSentimentIcon(double score) => score switch
+    {
+        >= 0.1 => Icons.Material.Filled.SentimentVerySatisfied,
+        <= -0.1 => Icons.Material.Filled.SentimentVeryDissatisfied,
+        _ => Icons.Material.Filled.SentimentNeutral
+    };
+
+    private Color GetEscalationColor(double rate) => rate switch
+    {
+        <= 5 => Color.Success,
+        <= 15 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private Color GetResponseTimeColor(double minutes) => minutes switch
+    {
+        <= 5 => Color.Success,
+        <= 15 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private double GetResponseTimeProgress(double minutes)
+    {
+        // Invert progress for response time (lower is better)
+        return Math.Max(0, 100 - Math.Min(100, (minutes / 30) * 100));
+    }
+
+    private Color GetSatisfactionColor(double score) => score switch
+    {
+        >= 80 => Color.Success,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private Color GetStatusColor(ConversationStatus status)
+    {
+        return status switch
+        {
+            ConversationStatus.Active => Color.Primary,
+            ConversationStatus.Completed => Color.Success,
+            ConversationStatus.Abandoned => Color.Error,
+            ConversationStatus.Archived => Color.Dark,
+            _ => Color.Default
+        };
+    }
+}

@@ -112,8 +112,11 @@
             Options.Theme.Mode = isDarkMode ? Mode.Dark : Mode.Light;
             Options.Fill.Gradient.GradientToColors = colors;
 
-            await Chart.UpdateOptionsAsync(true, true, false);
-            await Chart.RenderAsync();
+            if (Chart != null)
+            {
+                await Chart.UpdateOptionsAsync(true, true, false);
+                // Let ApexChart handle its own rendering - removed Chart.RenderAsync() to prevent NullReferenceException
+            }
             StateHasChanged();
         
     }

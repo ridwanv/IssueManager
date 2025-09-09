@@ -34,6 +34,23 @@
             else
             {
                 Logger.LogWarning("EscalationPopupService: HubConnection not in a connected state. Current state: {State}", _hubConnection?.State);
+                
+                // Try to reconnect and setup again
+                if (_hubConnection != null)
+                {
+                    try
+                    {
+                        await _hubConnection.StartAsync();
+                        if (_hubConnection.State == HubConnectionState.Connected)
+                        {
+                            await SetupConnection();
+                        }
+                    }
+                    catch (Exception reconnectEx)
+                    {
+                        Logger.LogError(reconnectEx, "Failed to reconnect SignalR for EscalationPopupService");
+                    }
+                }
             }
         }
         catch (Exception ex)
@@ -46,6 +63,12 @@
     {
         try
         {
+            if (_hubConnection == null)
+            {
+                Logger.LogError("HubConnection is null in SetupConnection");
+                return;
+            }
+
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
             var userId = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -53,7 +76,7 @@
             Logger.LogInformation("Setting up SignalR listeners for user {UserId}", userId);
             
             _receiveEscalationPopupHandler = _hubConnection.On<EscalationPopupDto>("ReceiveEscalationPopup", OnEscalationPopupReceived);
-            _dismissEscalationPopupHandler = _hubConnection.On<int>("DismissEscalationPopup", OnEscalationPopupDismissed);
+            _dismissEscalationPopupHandler = _hubConnection.On<string>("DismissEscalationPopup", OnEscalationPopupDismissed);
             
             // Join the agents group
             await _hubConnection.InvokeAsync("JoinAgentGroup");
@@ -91,7 +114,7 @@
         }
     }
 
-    private async Task OnEscalationPopupDismissed(int conversationId)
+    private async Task OnEscalationPopupDismissed(string conversationId)
     {
         try
         {

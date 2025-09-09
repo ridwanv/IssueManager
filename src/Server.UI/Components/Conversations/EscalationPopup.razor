@@ -162,6 +162,19 @@
     {
         try
         {
+            // Validate escalation data
+            if (escalationData == null)
+            {
+                Snackbar.Add("Invalid escalation data received.", Severity.Error);
+                return;
+            }
+            
+            if (string.IsNullOrEmpty(escalationData.ConversationReference))
+            {
+                Snackbar.Add("Invalid escalation data: missing conversation reference.", Severity.Error);
+                return;
+            }
+            
             _escalationData = escalationData;
             _showPopup = true;
             StateHasChanged();
@@ -175,66 +188,199 @@
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[EscalationPopup] Error showing escalation: {ex}");
             Snackbar.Add($"Error showing escalation: {ex.Message}", Severity.Error);
         }
     }
 
     public void HidePopup()
     {
-        _showPopup = false;
-        _escalationData = null;
-        _processing = false;
+        Console.WriteLine("[EscalationPopup] HidePopup called");
         
-        if (_timeoutHandle.HasValue)
+        try
         {
-            _ = JS.InvokeVoidAsync("clearTimeout", _timeoutHandle.Value);
-            _timeoutHandle = null;
+            Console.WriteLine("[EscalationPopup] Setting _showPopup to false...");
+            _showPopup = false;
+            
+            Console.WriteLine("[EscalationPopup] Setting _escalationData to null...");
+            _escalationData = null;
+            
+            Console.WriteLine("[EscalationPopup] Setting _processing to false...");
+            _processing = false;
+            
+            Console.WriteLine("[EscalationPopup] Checking _timeoutHandle...");
+            if (_timeoutHandle.HasValue)
+            {
+                Console.WriteLine("[EscalationPopup] Clearing timeout...");
+                _ = JS.InvokeVoidAsync("clearTimeout", _timeoutHandle.Value);
+                _timeoutHandle = null;
+            }
+            else
+            {
+                Console.WriteLine("[EscalationPopup] No timeout to clear");
+            }
+            
+            Console.WriteLine("[EscalationPopup] Calling StateHasChanged...");
+            StateHasChanged();
+            Console.WriteLine("[EscalationPopup] HidePopup completed successfully");
         }
-        
-        StateHasChanged();
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EscalationPopup] Exception in HidePopup: {ex}");
+            throw;
+        }
     }
 
     private async Task AcceptEscalation()
     {
-        if (_escalationData == null || _processing) return;
-        
-        _processing = true;
-        StateHasChanged();
-
         try
         {
-            var command = new AcceptEscalationCommand { ConversationId = _escalationData.ConversationReference };
-            var result = await Mediator.Send(command);
-
-            if (result.Succeeded)
+            Console.WriteLine("[EscalationPopup] AcceptEscalation called - ENTRY");
+            
+            // Check injected services first - each on separate lines to isolate null reference
+            Console.WriteLine("[EscalationPopup] Checking Mediator...");
+            var mediatorCheck = Mediator;
+            
+            Console.WriteLine("[EscalationPopup] Checking Snackbar...");
+            var snackbarCheck = Snackbar;
+            
+            Console.WriteLine("[EscalationPopup] Checking _escalationData...");
+            var escalationDataCheck = _escalationData;
+            
+            Console.WriteLine("[EscalationPopup] Checking _processing...");
+            var processingCheck = _processing;
+            
+            if (mediatorCheck == null)
             {
+                Console.WriteLine("[EscalationPopup] Mediator is null!");
+                snackbarCheck?.Add("System error: Mediator service not available.", Severity.Error);
+                return;
+            }
+            
+            if (snackbarCheck == null)
+            {
+                Console.WriteLine("[EscalationPopup] Snackbar is null!");
+                return;
+            }
+            
+            if (escalationDataCheck == null)
+            {
+                Console.WriteLine("[EscalationPopup] _escalationData is null");
+                snackbarCheck.Add("No escalation data available.", Severity.Error);
+                return;
+            }
+            
+            if (processingCheck)
+            {
+                Console.WriteLine("[EscalationPopup] Already processing");
+                return;
+            }
+            
+            Console.WriteLine("[EscalationPopup] Checking ConversationReference...");
+            var conversationRef = escalationDataCheck.ConversationReference;
+            
+            // Validate required data
+            if (string.IsNullOrEmpty(conversationRef))
+            {
+                Console.WriteLine("[EscalationPopup] ConversationReference is null or empty");
+                snackbarCheck.Add("Invalid escalation data: missing conversation reference.", Severity.Error);
+                return;
+            }
+            
+            Console.WriteLine($"[EscalationPopup] Processing escalation for conversation: {conversationRef}");
+            
+            Console.WriteLine("[EscalationPopup] Setting _processing to true...");
+            _processing = true;
+            
+            Console.WriteLine("[EscalationPopup] Calling StateHasChanged...");
+            StateHasChanged();
+
+            Console.WriteLine("[EscalationPopup] Creating command...");
+            var command = new AcceptEscalationCommand { ConversationId = conversationRef };
+            
+            Console.WriteLine("[EscalationPopup] Sending command via Mediator...");
+            var result = await mediatorCheck.Send(command);
+            
+            Console.WriteLine($"[EscalationPopup] Command result - Succeeded: {result?.Succeeded}");
+
+            if (result?.Succeeded == true)
+            {
+                Console.WriteLine("[EscalationPopup] Command succeeded, broadcasting to SignalR");
+                
                 // Broadcast escalation acceptance to clear persistent notifications for ALL agents
+                Console.WriteLine("[EscalationPopup] Checking hub connection...");
                 if (_hubConnection?.State == HubConnectionState.Connected)
                 {
-                    await _hubConnection.InvokeAsync("BroadcastEscalationAccepted", _escalationData.ConversationReference);
-                    Console.WriteLine($"[EscalationPopup] Broadcasted escalation acceptance for {_escalationData.ConversationReference}");
+                    Console.WriteLine("[EscalationPopup] Hub connection is available, invoking SignalR...");
+                    await _hubConnection.InvokeAsync("BroadcastEscalationAccepted", conversationRef);
+                    Console.WriteLine($"[EscalationPopup] Broadcasted escalation acceptance for {conversationRef}");
+                }
+                else
+                {
+                    Console.WriteLine($"[EscalationPopup] Hub connection not available or not connected. State: {_hubConnection?.State}");
                 }
                 
+                Console.WriteLine("[EscalationPopup] Checking callback...");
                 // Invoke the callback if it's set
                 if (OnEscalationAccepted.HasDelegate)
                 {
-                    await OnEscalationAccepted.InvokeAsync(_escalationData.ConversationReference);
+                    Console.WriteLine("[EscalationPopup] Invoking callback");
+                    try
+                    {
+                        await OnEscalationAccepted.InvokeAsync(conversationRef);
+                        Console.WriteLine("[EscalationPopup] Callback invoked successfully");
+                    }
+                    catch (Exception callbackEx)
+                    {
+                        Console.WriteLine($"[EscalationPopup] Exception in callback: {callbackEx}");
+                        throw;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[EscalationPopup] No callback delegate set");
                 }
                 
+                Console.WriteLine("[EscalationPopup] Checking Navigation...");
                 // Navigate to the conversation page
-                Navigation?.NavigateTo($"/agent/conversations/{_escalationData.ConversationReference}");
+                if (Navigation != null)
+                {
+                    Console.WriteLine($"[EscalationPopup] Navigating to conversation: {conversationRef}");
+                    Navigation.NavigateTo($"/agent/conversations/{conversationRef}");
+                    Console.WriteLine("[EscalationPopup] Navigation completed");
+                }
+                else
+                {
+                    Console.WriteLine("[EscalationPopup] Navigation service is null");
+                }
+                
+                Console.WriteLine("[EscalationPopup] Calling HidePopup...");
                 HidePopup();
+                Console.WriteLine("[EscalationPopup] HidePopup completed");
             }
             else
             {
-                Snackbar.Add("Failed to accept escalation.", Severity.Error);
+                var errorMessage = result?.Errors?.Any() == true 
+                    ? string.Join(", ", result.Errors) 
+                    : "Unknown error occurred";
+                Console.WriteLine($"[EscalationPopup] Command failed: {errorMessage}");
+                snackbarCheck.Add($"Failed to accept escalation: {errorMessage}", Severity.Error);
                 _processing = false;
                 StateHasChanged();
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error accepting escalation: {ex.Message}", Severity.Error);
+            Console.WriteLine($"[EscalationPopup] Exception in AcceptEscalation: {ex}");
+            Console.WriteLine($"[EscalationPopup] Exception StackTrace: {ex.StackTrace}");
+            
+            // Check if the exception is coming from a null reference
+            if (ex is NullReferenceException)
+            {
+                Console.WriteLine("[EscalationPopup] This is a null reference exception");
+            }
+            
+            Snackbar?.Add($"Error accepting escalation: {ex.Message}", Severity.Error);
             _processing = false;
             StateHasChanged();
         }

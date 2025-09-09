@@ -1,15 +1,20 @@
 ﻿@page "/agent/my-conversations"
 @using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
-@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAllConversations
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetMyActiveConversations
 @using CleanArchitecture.Blazor.Domain.Enums
 @using CleanArchitecture.Blazor.Application.Common.Security
 @using CleanArchitecture.Blazor.Server.UI.Components.Shared
+@using CleanArchitecture.Blazor.Server.UI.Components.Conversations
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
 @attribute [Authorize]
 @inject IMediator Mediator
 @inject IStringLocalizer<SharedResource> L
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject SignalRConnectionService SignalRService
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
 
 <PageTitle>@L["My Conversations"]</PageTitle>
 
@@ -42,11 +47,18 @@
                           Class="flex-grow-0"
                           Style="min-width: 150px;"
                           OnSelectionChanged="OnStatusChanged">
-                    <MudSelectItem Value="@((ConversationStatus?)null)">@L["All Statuses"]</MudSelectItem>
+                    <MudSelectItem Value="@((ConversationStatus?)null)">@L["All Active"]</MudSelectItem>
                     <MudSelectItem Value="ConversationStatus.Active">@L["Active"]</MudSelectItem>
-                    <MudSelectItem Value="ConversationStatus.Completed">@L["Completed"]</MudSelectItem>
-                    <MudSelectItem Value="ConversationStatus.Abandoned">@L["Abandoned"]</MudSelectItem>
-                    <MudSelectItem Value="ConversationStatus.Archived">@L["Archived"]</MudSelectItem>
+                </MudSelect>
+                <MudSelect @bind-Value="selectedPriority"
+                          Label="@L["Priority"]"
+                          Class="flex-grow-0"
+                          Style="min-width: 150px;"
+                          OnSelectionChanged="OnPriorityChanged">
+                    <MudSelectItem Value="@((int?)null)">@L["All Priorities"]</MudSelectItem>
+                    <MudSelectItem Value="1">@L["Standard"]</MudSelectItem>
+                    <MudSelectItem Value="2">@L["High"]</MudSelectItem>
+                    <MudSelectItem Value="3">@L["Critical"]</MudSelectItem>
                 </MudSelect> *@
             </div>
         </div>
@@ -59,112 +71,14 @@
         }
         else if (conversations?.Items?.Any() == true)
         {
-            <MudTable Items="@conversations.Items" 
-                     Hover="true" 
-                     Striped="true" 
-                     Dense="true"
-                     FixedHeader="true"
-                     Height="600px"
-                     Class="mud-table-container">
-                <HeaderContent>
-                    <MudTh>@L["Conversation ID"]</MudTh>
-                    <MudTh>@L["User"]</MudTh>
-                    <MudTh>@L["Status"]</MudTh>
-                    <MudTh>@L["Accepted Date"]</MudTh>
-                    <MudTh>@L["Last Activity"]</MudTh>
-                    <MudTh>@L["Messages"]</MudTh>
-                    <MudTh>@L["Summary"]</MudTh>
-                    <MudTh>@L["Actions"]</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Conversation ID">
-                        <MudText Typo="Typo.body2" Class="font-weight-medium">
-                            @context.ConversationReference
-                        </MudText>
-                    </MudTd>
-                    <MudTd DataLabel="User">
-                        <div class="d-flex align-center gap-2">
-                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
-                            <MudText Typo="Typo.body2">
-                                @(context.UserName ?? context.UserId ?? L["Unknown"])
-                            </MudText>
-                        </div>
-                    </MudTd>
-                    <MudTd DataLabel="Status">
-                        <MudChip T="string" Size="Size.Small" 
-                                Color="@GetStatusColor(context.Status)"
-                                Variant="Variant.Filled">
-                            @context.Status
-                        </MudChip>
-                    </MudTd>
-                    <MudTd DataLabel="Accepted Date">
-                        @if (context.EscalatedAt.HasValue)
-                        {
-                            <MudText Typo="Typo.body2">
-                                @context.EscalatedAt.Value.ToString("MMM dd, yyyy")
-                            </MudText>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @context.EscalatedAt.Value.ToString("HH:mm")
-                            </MudText>
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @L["Not specified"]
-                            </MudText>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="Last Activity">
-                        <MudText Typo="Typo.body2">
-                            @context.LastActivityAt.ToString("MMM dd, yyyy")
-                        </MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @context.LastActivityAt.ToString("HH:mm")
-                        </MudText>
-                    </MudTd>
-                    <MudTd DataLabel="Messages">
-                        <MudText Typo="Typo.body2" Class="text-center">
-                            @context.MessageCount
-                        </MudText>
-                    </MudTd>
-                    <MudTd DataLabel="Summary">
-                        @if (!string.IsNullOrEmpty(context.ConversationSummary))
-                        {
-                            <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 200px;">
-                                @context.ConversationSummary
-                            </MudText>
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @L["No summary"]
-                            </MudText>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="Actions">
-                        <div class="d-flex gap-1">
-                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
-                                          Size="Size.Small"
-                                           OnClick="@(() => ViewConversation(context.ConversationReference))"
-                                          Title="@L["View conversation"]" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Download"
-                                          Size="Size.Small"
-                                          Title="@L["Export conversation"]" />
-                            @if (context.Status == ConversationStatus.Active)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Filled.Reply"
-                                              Size="Size.Small"
-                                              Color="Color.Primary"
-                                              OnClick="@(() => ReplyToConversation(context.ConversationReference))"
-                                              Title="@L["Reply to conversation"]" />
-                            }
-                        </div>
-                    </MudTd>
-                </RowTemplate>
-                <PagerContent>
-                    <MudTablePager />
-                </PagerContent>
-            </MudTable>
+            <MudGrid Spacing="3">
+                @foreach (var conversation in conversations.Items)
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <ConversationCard Conversation="@conversation" />
+                    </MudItem>
+                }
+            </MudGrid>
 
             @if (conversations.TotalItems > conversations.Items.Count())
             {
@@ -221,16 +135,20 @@
     private bool loading = true;
     private string searchString = string.Empty;
     private ConversationStatus? selectedStatus = null;
+    private int? selectedPriority = null;
     private int currentPage = 1;
     private int pageSize = 12;
     private PaginatedData<ConversationDto>? conversations;
     private string? currentUserId;
+    private HubConnection? _hubConnection;
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         currentUserId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        
         await LoadMyConversations();
+        await SetupSignalRConnection();
     }
 
     private async Task LoadMyConversations()
@@ -238,12 +156,18 @@
         loading = true;
         try
         {
-            var query = new GetAllConversationsQuery(
-                Status: selectedStatus?.ToString(),
-                UserId: null, // We want conversations assigned to agent, not originated by user
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                conversations = null;
+                Snackbar.Add("User not authenticated", Severity.Error);
+                return;
+            }
+
+            var query = new GetMyActiveConversationsQuery(
+                AgentId: currentUserId,
                 SearchTerm: searchString,
-                StartDate: null,
-                EndDate: null,
+                Status: selectedStatus,
+                Priority: selectedPriority,
                 Page: currentPage,
                 PageSize: pageSize,
                 SortBy: "LastActivityAt",
@@ -285,20 +209,16 @@
         await LoadMyConversations();
     }
 
+    private async Task OnPriorityChanged()
+    {
+        currentPage = 1;
+        await LoadMyConversations();
+    }
+
     private async Task OnPageChanged(int page)
     {
         currentPage = page;
         await LoadMyConversations();
-    }
-
-    private void ViewConversation(string conversationId)
-    {
-        Navigation.NavigateTo($"/agent/conversations/{conversationId}");
-    }
-
-    private void ReplyToConversation(string conversationId)
-    {
-        Navigation.NavigateTo($"/agent/conversations/{conversationId}#reply");
     }
 
     private void NavigateToPendingConversations()
@@ -306,15 +226,134 @@
         Navigation.NavigateTo("/agent/pending-conversations");
     }
 
-    private Color GetStatusColor(ConversationStatus status)
+    private async Task SetupSignalRConnection()
     {
-        return status switch
+        try
         {
-            ConversationStatus.Active => Color.Success,
-            ConversationStatus.Completed => Color.Secondary,
-            ConversationStatus.Abandoned => Color.Warning,
-            ConversationStatus.Archived => Color.Info,
-            _ => Color.Default
-        };
+            // Use the SignalRConnectionService to get the connection
+            await SignalRService.EnsureConnectedAsync();
+            _hubConnection = SignalRService.HubConnection;
+
+            if (_hubConnection != null)
+            {
+                // Handle conversation status changes
+                _hubConnection.On<string, ConversationStatus>("ConversationStatusChanged", OnConversationStatusChanged);
+                
+                // Handle conversation assignment changes
+                _hubConnection.On<string, string, string>("ConversationAssigned", OnConversationAssigned);
+                _hubConnection.On<string, string>("ConversationCompleted", OnConversationCompleted);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR connection error: {ex.Message}");
+        }
+    }
+
+    private async Task OnConversationStatusChanged(string conversationId, ConversationStatus newStatus)
+    {
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                var pastStatuses = new[] { ConversationStatus.Completed, ConversationStatus.Abandoned, ConversationStatus.Archived };
+                
+                if (conversations?.Items != null)
+                {
+                    var conversation = conversations.Items.FirstOrDefault(c => c.ConversationReference == conversationId);
+                    if (conversation != null)
+                    {
+                        if (pastStatuses.Contains(newStatus))
+                        {
+                            // Conversation moved to past - remove from current view and refresh
+                            await LoadMyConversations();
+                            Snackbar.Add($"Conversation {conversationId} has been {newStatus.ToString().ToLower()}", Severity.Info);
+                        }
+                        else
+                        {
+                            // Update status in current view
+                            conversation.Status = newStatus;
+                        }
+                        
+                        StateHasChanged();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling conversation status change: {ex.Message}");
+            }
+        });
+    }
+
+    private async Task OnConversationAssigned(string conversationId, string agentId, string agentName)
+    {
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                if (agentId == currentUserId)
+                {
+                    // Conversation assigned to current user - refresh the list
+                    await LoadMyConversations();
+                    Snackbar.Add($"New conversation {conversationId} assigned to you", Severity.Success);
+                }
+                else if (conversations?.Items != null)
+                {
+                    // Conversation assigned away from current user - remove it
+                    var conversation = conversations.Items.FirstOrDefault(c => c.ConversationReference == conversationId);
+                    if (conversation != null)
+                    {
+                        await LoadMyConversations();
+                        Snackbar.Add($"Conversation {conversationId} reassigned to {agentName}", Severity.Info);
+                    }
+                }
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling conversation assignment: {ex.Message}");
+            }
+        });
+    }
+
+    private async Task OnConversationCompleted(string conversationId, string agentId)
+    {
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                if (conversations?.Items != null)
+                {
+                    var conversation = conversations.Items.FirstOrDefault(c => c.ConversationReference == conversationId);
+                    if (conversation != null)
+                    {
+                        // Conversation completed - remove from active view
+                        await LoadMyConversations();
+                        if (agentId == currentUserId)
+                        {
+                            Snackbar.Add($"Conversation {conversationId} completed successfully", Severity.Success);
+                        }
+                    }
+                }
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling conversation completion: {ex.Message}");
+            }
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // SignalRConnectionService handles its own disposal
+        // We just need to remove our event handlers
+        if (_hubConnection is not null)
+        {
+            _hubConnection.Remove("ConversationStatusChanged");
+            _hubConnection.Remove("ConversationAssigned");
+            _hubConnection.Remove("ConversationCompleted");
+        }
     }
 }

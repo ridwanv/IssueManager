@@ -15,28 +15,6 @@ public class MenuService : IMenuService
                 new() { Title = "Home", Icon = Icons.Material.Filled.Home, Href = "/" },
                 new()
                 {
-                    Title = "Issues",
-                    Icon = Icons.Material.Filled.BugReport,
-                    Href = "/issues",
-                    PageStatus = PageStatus.Completed
-                },
-                new()
-                {
-                    Title = "My Issues",
-                    Icon = Icons.Material.Filled.AssignmentInd,
-                    Href = "/my-issues",
-                    PageStatus = PageStatus.Completed
-                },
-                new()
-                {
-                    Title = "Issue Analytics",
-                    Roles = new[] { RoleName.Admin, RoleName.Users },
-                    Icon = Icons.Material.Filled.Analytics,
-                    Href = "/issues/analytics",
-                    PageStatus = PageStatus.Completed
-                },
-                new()
-                {
                     Title = "E-Commerce",
                     Icon = Icons.Material.Filled.ShoppingCart,
                     PageStatus = PageStatus.Completed,
@@ -91,6 +69,35 @@ public class MenuService : IMenuService
         },
         new MenuSectionModel
         {
+            Title = "ISSUES",
+            SectionItems = new List<MenuSectionItemModel>
+            {
+                new()
+                {
+                    Title = "My Issues",
+                    Icon = Icons.Material.Filled.AssignmentInd,
+                    Href = "/my-issues",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "Issue Management",
+                    Icon = Icons.Material.Filled.List,
+                    Href = "/issues",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "Issue Analytics",
+                    Roles = new[] { RoleName.Admin, RoleName.Users },
+                    Icon = Icons.Material.Filled.Analytics,
+                    Href = "/issues/analytics",
+                    PageStatus = PageStatus.Completed
+                }
+            }
+        },
+        new MenuSectionModel
+        {
             Title = "CONVERSATIONS",
             SectionItems = new List<MenuSectionItemModel>
             {
@@ -99,6 +106,13 @@ public class MenuService : IMenuService
                     Title = "My Conversations",
                     Icon = Icons.Material.Filled.PersonalVideo,
                     Href = "/agent/my-conversations",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "Past Conversations",
+                    Icon = Icons.Material.Filled.History,
+                    Href = "/agent/past-conversations",
                     PageStatus = PageStatus.Completed
                 },
                 new()
@@ -113,6 +127,14 @@ public class MenuService : IMenuService
                     Title = "Conversation Manager",
                     Icon = Icons.Material.Filled.Dashboard,
                     Href = "/agent-dashboard",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "Conversation Analytics",
+                    Roles = new[] { RoleName.Admin, RoleName.Users },
+                    Icon = Icons.Material.Filled.Analytics,
+                    Href = "/conversations/analytics",
                     PageStatus = PageStatus.Completed
                 }
             }

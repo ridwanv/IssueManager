@@ -1,13 +1,15 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using MediatR;
+﻿using CleanArchitecture.Blazor.Application.Common.Models;
 using CleanArchitecture.Blazor.Application.Features.Issues.Commands.Create;
-using CleanArchitecture.Blazor.Application.Features.Issues.Commands.Update;
 using CleanArchitecture.Blazor.Application.Features.Issues.Commands.Delete;
+using CleanArchitecture.Blazor.Application.Features.Issues.Commands.Update;
+using CleanArchitecture.Blazor.Application.Features.Issues.DTOs;
 using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetById;
 using CleanArchitecture.Blazor.Application.Features.Issues.Queries.GetIssues;
-using CleanArchitecture.Blazor.Application.Features.Issues.DTOs;
-using CleanArchitecture.Blazor.Application.Common.Models;
 using CleanArchitecture.Blazor.Domain.Enums;
+using IssueManager.Shared.DTOs;
+using MediatR;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Bot.Schema;
 
 namespace CleanArchitecture.Blazor.Server.UI.Controllers;
 
@@ -142,13 +144,51 @@ public class IssuesController : ControllerBase
     /// <summary>
     /// Create a new issue via WhatsApp/Bot intake
     /// </summary>
-    /// <param name="command">Issue intake command</param>
+    /// <param name="dto">Issue intake data transfer object</param>
     /// <returns>Created issue ID</returns>
     [HttpPost("intake")]
-    public async Task<ActionResult<Result<Guid>>> CreateIssueIntake([FromBody] IssueIntakeCommand command)
+    public async Task<ActionResult<Result<Guid>>> CreateIssueIntake([FromBody] IssueIntakeDto dto)
     {
         try
         {
+            // Retrieve or create contact
+            if (string.IsNullOrWhiteSpace(dto.ReporterPhone))
+            {
+                return BadRequest("ReporterPhone is required");
+            }
+            if (string.IsNullOrWhiteSpace(dto.ReporterName))
+            {
+                dto.ReporterName = "Unknown";
+            }
+
+            // Map DTO to Command
+            var command = new IssueIntakeCommand
+            {
+                ReporterPhone = dto.ReporterPhone,
+                ReporterName = dto.ReporterName,
+                ConversationReference = dto.ConversationReference,
+                Channel = dto.Channel,
+                Category = dto.Category,
+                Product = dto.Product,
+                Severity = dto.Severity,
+                Priority = dto.Priority,
+                Summary = dto.Summary,
+                Description = dto.Description,
+                SourceMessageIds = dto.SourceMessageIds,
+                ConsentFlag = dto.ConsentFlag,
+                Status = dto.Status,
+                ContactId = dto.ContactId,
+                TenantId = "08d59d06-8d9e-4f9b-a205-31bbb476876f",
+                //ConversationId = dto.ConversationId,
+                Attachments = dto.Attachments?.Select(a => new IssueAttachmentData
+                {
+                    Name = a.Name,
+                    ContentType = a.ContentType,
+                    Url = a.Url,
+                    Size = a.Size
+                }).ToList()
+            };
+
             var result = await _mediator.Send(command);
             
             if (!result.Succeeded)

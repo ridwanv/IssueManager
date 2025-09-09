@@ -53,12 +53,6 @@ public class ConversationInsightConfiguration : IEntityTypeConfiguration<Convers
         builder.HasIndex(x => x.SentimentScore);
         builder.HasIndex(x => new { x.TenantId, x.ProcessedAt });
 
-        // Configure relationship with Conversation
-        builder.HasOne(x => x.Conversation)
-            .WithOne()
-            .HasForeignKey<ConversationInsight>(x => x.ConversationId)
-            .OnDelete(DeleteBehavior.Cascade);
-
         builder.Ignore(e => e.DomainEvents);
     }
 }

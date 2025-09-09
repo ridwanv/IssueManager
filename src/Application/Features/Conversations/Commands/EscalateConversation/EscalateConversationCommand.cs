@@ -107,6 +107,7 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
             EscalationReason = request.Reason,
             Priority = DeterminePriority(request.Reason),
             EscalatedAt = existingConversation.EscalatedAt ?? DateTime.UtcNow,
+            LastMessage = ExtractLastUserMessage(request.ConversationTranscript),
             MessageCount = CountMessagesFromTranscript(request.ConversationTranscript),
             ConversationDuration = existingConversation.Duration,
             ConversationSummary = TruncateTranscript(request.ConversationTranscript, 200)
@@ -132,6 +133,37 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
         // For now, just use phone number as name
         // TODO: Integrate with contact system to get actual names
         return phoneNumber.StartsWith("+") ? phoneNumber : $"+{phoneNumber}";
+    }
+    
+    private static string? ExtractLastUserMessage(string? transcript)
+    {
+        if (string.IsNullOrEmpty(transcript))
+            return null;
+            
+        // Try to extract the last user message from the transcript
+        var lines = transcript.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        
+        // Look for the last message from the user (not bot)
+        for (int i = lines.Length - 1; i >= 0; i--)
+        {
+            var line = lines[i].Trim();
+            if (line.StartsWith("User:", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Customer:", StringComparison.OrdinalIgnoreCase) ||
+                (!line.StartsWith("Bot:", StringComparison.OrdinalIgnoreCase) && 
+                 !line.StartsWith("Agent:", StringComparison.OrdinalIgnoreCase) &&
+                 !string.IsNullOrWhiteSpace(line)))
+            {
+                // Clean up the message (remove prefixes)
+                var message = line
+                    .Replace("User:", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("Customer:", "", StringComparison.OrdinalIgnoreCase)
+                    .Trim();
+                    
+                return string.IsNullOrWhiteSpace(message) ? null : message;
+            }
+        }
+        
+        return null;
     }
     
     private static int DeterminePriority(string reason)

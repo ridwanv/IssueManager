@@ -1,0 +1,54 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetConversationPerformanceStats
+@using Microsoft.Extensions.Localization
+@using MudBlazor
+
+@inject IStringLocalizer<ResolutionCategoryPerformanceTable> L
+
+<MudSimpleTable Dense="true" Hover="true">
+    <thead>
+        <tr>
+            <th>@L["Category"]</th>
+            <th>@L["Total"]</th>
+            <th>@L["Avg Resolution Time"]</th>
+            <th>@L["Average Sentiment"]</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var category in Categories.OrderByDescending(c => c.TotalConversations))
+        {
+            <tr>
+                <td>@category.CategoryName</td>
+                <td>@category.TotalConversations</td>
+                <td>@FormatDuration(TimeSpan.FromHours(category.AverageResolutionHours))</td>
+                <td>
+                    <MudChip T="string" Color="@GetSentimentColor(category.AverageSentimentScore)" Size="MudBlazor.Size.Small">
+                        @category.SentimentScoreFormatted
+                    </MudChip>
+                </td>
+            </tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    [Parameter] public List<ResolutionCategoryPerformanceDto> Categories { get; set; } = default!;
+
+    private Color GetSentimentColor(double sentiment)
+    {
+        return sentiment switch
+        {
+            >= 0.5 => Color.Success,
+            >= 0.0 => Color.Warning,
+            _ => Color.Error
+        };
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalDays >= 1)
+            return $"{duration.TotalDays:F1}d";
+        if (duration.TotalHours >= 1)
+            return $"{duration.TotalHours:F1}h";
+        return $"{duration.TotalMinutes:F0}m";
+    }
+}

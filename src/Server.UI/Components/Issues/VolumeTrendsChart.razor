@@ -44,28 +44,23 @@ else
             SetupChartOptions();
             _shouldRender = true;
         }
+        else
+        {
+            _shouldRender = false;
+        }
         return Task.CompletedTask;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_shouldRender && Chart != null)
-        {
-            try
-            {
-                await Chart.RenderAsync();
-            }
-            catch (NullReferenceException)
-            {
-                // Chart may not be fully initialized yet; ignore and try again on next render
-            }
-            _shouldRender = false;
-        }
+        // Let ApexChart handle its own rendering lifecycle
+        // Manual Chart.RenderAsync() calls can cause race conditions and NullReferenceException
+        return Task.CompletedTask;
     }
 
     private void SetupChartOptions()
     {
-        var isDarkMode = LayoutService.IsDarkMode;
+        var isDarkMode = LayoutService?.IsDarkMode ?? false;
         var primaryColor = isDarkMode ? "#90CAF9" : "#1976D2";
         
         Options = new ApexChartOptions<ChartDataPoint>
