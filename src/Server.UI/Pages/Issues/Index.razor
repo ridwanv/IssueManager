@@ -193,6 +193,12 @@
     private Color _connectionColor = Color.Warning;
     private bool _isInitialized = false;
     
+    // SignalR handler disposables to avoid calling Remove(method) which clears other components' handlers
+    private IDisposable? _issueCreatedHandler;
+    private IDisposable? _issueUpdatedHandler;
+    private IDisposable? _issueStatusChangedHandler;
+    private IDisposable? _issueListUpdatedHandler;
+    
     [CascadingParameter]
     private UserProfile? UserProfile { get; set; }
 
@@ -218,42 +224,16 @@
             
             if (_hubConnection != null)
             {
-                // Subscribe to issue-related events
-                _hubConnection.On<IssueListDto>("IssueCreated", OnIssueCreated);
-                _hubConnection.On<IssueListDto>("IssueUpdated", OnIssueUpdated);
-                _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnIssueStatusChanged);
-                _hubConnection.On("IssueListUpdated", OnIssueListUpdated);
+                // Subscribe to issue-related events using disposables
+                _issueCreatedHandler = _hubConnection.On<IssueListDto>("IssueCreated", OnIssueCreated);
+                _issueUpdatedHandler = _hubConnection.On<IssueListDto>("IssueUpdated", OnIssueUpdated);
+                _issueStatusChangedHandler = _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnIssueStatusChanged);
+                _issueListUpdatedHandler = _hubConnection.On("IssueListUpdated", OnIssueListUpdated);
                 
                 // Handle connection state changes
-                _hubConnection.Reconnecting += (error) =>
-                {
-                    InvokeAsync(() =>
-                    {
-                        UpdateConnectionStatus();
-                        StateHasChanged();
-                    });
-                    return Task.CompletedTask;
-                };
-                
-                _hubConnection.Reconnected += (connectionId) =>
-                {
-                    InvokeAsync(() =>
-                    {
-                        UpdateConnectionStatus();
-                        StateHasChanged();
-                    });
-                    return Task.CompletedTask;
-                };
-                
-                _hubConnection.Closed += (error) =>
-                {
-                    InvokeAsync(() =>
-                    {
-                        UpdateConnectionStatus();
-                        StateHasChanged();
-                    });
-                    return Task.CompletedTask;
-                };
+                _hubConnection.Reconnecting += OnReconnecting;
+                _hubConnection.Reconnected += OnReconnected;
+                _hubConnection.Closed += OnConnectionClosed;
             }
             
             _isInitialized = true;
@@ -263,6 +243,36 @@
             Logger.LogError(ex, "Failed to initialize SignalR connection");
             UpdateConnectionStatus();
         }
+    }
+
+    private Task OnReconnecting(Exception? error)
+    {
+        InvokeAsync(() =>
+        {
+            UpdateConnectionStatus();
+            StateHasChanged();
+        });
+        return Task.CompletedTask;
+    }
+
+    private Task OnReconnected(string? connectionId)
+    {
+        InvokeAsync(() =>
+        {
+            UpdateConnectionStatus();
+            StateHasChanged();
+        });
+        return Task.CompletedTask;
+    }
+
+    private Task OnConnectionClosed(Exception? error)
+    {
+        InvokeAsync(() =>
+        {
+            UpdateConnectionStatus();
+            StateHasChanged();
+        });
+        return Task.CompletedTask;
     }
 
     private void UpdateConnectionStatus()
@@ -500,13 +510,27 @@
     {
         if (_isInitialized && _hubConnection != null)
         {
-            // No need to unsubscribe from events - they're disposed with the connection
+            try
+            {
+                // Dispose only handlers registered by this component (won't affect other components)
+                _issueCreatedHandler?.Dispose();
+                _issueUpdatedHandler?.Dispose();
+                _issueStatusChangedHandler?.Dispose();
+                _issueListUpdatedHandler?.Dispose();
+                
+                // Remove connection state handlers
+                _hubConnection.Reconnecting -= OnReconnecting;
+                _hubConnection.Reconnected -= OnReconnected;
+                _hubConnection.Closed -= OnConnectionClosed;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error disposing SignalR handlers");
+            }
         }
         
-        if (_hubConnection is not null)
-        {
-            await _hubConnection.DisposeAsync();
-        }
+        // DO NOT dispose the shared HubConnection - it's managed by SignalRConnectionService
+        // The connection should remain alive for other components
     }
 }
 

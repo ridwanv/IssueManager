@@ -13,34 +13,28 @@ public class MenuService : IMenuService
             SectionItems = new List<MenuSectionItemModel>
             {
                 new() { Title = "Home", Icon = Icons.Material.Filled.Home, Href = "/" },
-                new()
-                {
-                    Title = "E-Commerce",
-                    Icon = Icons.Material.Filled.ShoppingCart,
-                    PageStatus = PageStatus.Completed,
-                    IsParent = true,
-                    MenuItems = new List<MenuSectionSubItemModel>
-                    {
-                        new()
-                        {
-                            Title = "Products",
-                            Href = "/pages/products",
-                            PageStatus = PageStatus.Completed
-                        },
-                        new()
-                        {
-                            Title = "Documents",
-                            Href = "/pages/documents",
-                            PageStatus = PageStatus.Completed
-                        },
-                        new()
-                        {
-                            Title = "Contacts",
-                            Href = "/pages/contacts",
-                            PageStatus = PageStatus.Completed
-                        }
-                    }
-                },
+                //new()
+                //{
+                //    Title = "E-Commerce",
+                //    Icon = Icons.Material.Filled.ShoppingCart,
+                //    PageStatus = PageStatus.Completed,
+                //    IsParent = true,
+                //    MenuItems = new List<MenuSectionSubItemModel>
+                //    {
+                //        new()
+                //        {
+                //            Title = "Products",
+                //            Href = "/pages/products",
+                //            PageStatus = PageStatus.Completed
+                //        },
+                //        new()
+                //        {
+                //            Title = "Documents",
+                //            Href = "/pages/documents",
+                //            PageStatus = PageStatus.Completed
+                //        }
+                //    }
+                //},
                 //new()
                 //{
                 //    Title = "Analytics",
@@ -135,6 +129,13 @@ public class MenuService : IMenuService
                     Roles = new[] { RoleName.Admin, RoleName.Users },
                     Icon = Icons.Material.Filled.Analytics,
                     Href = "/conversations/analytics",
+                    PageStatus = PageStatus.Completed
+                },
+                new()
+                {
+                    Title = "Contacts",
+                    Icon = Icons.Material.Filled.Contacts,
+                    Href = "/pages/contacts",
                     PageStatus = PageStatus.Completed
                 }
             }
