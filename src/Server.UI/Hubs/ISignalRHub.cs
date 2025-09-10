@@ -38,6 +38,10 @@ public interface ISignalRHub
     Task ConversationTransferred(string conversationId, string? fromAgentId, string toAgentId, string fromAgentName, string toAgentName);
     Task ConversationTransferredFrom(string conversationId, string toAgentId, string toAgentName);
     Task ConversationTransferredTo(string conversationId, string? fromAgentId, string fromAgentName);
+    Task ConversationReassigned(string conversationId, string previousAgentId, string newAgentId, string newAgentName, string reason);
+    Task ConversationReassignedFrom(string conversationId, string newAgentId, string newAgentName, string reason);
+    Task ConversationReassignedTo(string conversationId, string previousAgentId, string reason);
+    Task ConversationReassignmentNotification(string conversationId, string previousAgentId, string newAgentId, string newAgentName, string reason);
     Task ConversationCompleted(string conversationId, string agentId);
     Task AgentStatusChanged(string agentId, string status);
     Task NewConversationMessage(string conversationId, string from, string message, bool isFromAgent);

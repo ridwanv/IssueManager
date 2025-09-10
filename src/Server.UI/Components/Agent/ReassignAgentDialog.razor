@@ -1,0 +1,60 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using MudBlazor
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center">
+            <MudIcon Icon="Icons.Material.Filled.SwapHoriz" Class="mr-3" />
+            <MudText Typo="Typo.h6">Reassign Conversation</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <div class="d-flex flex-column gap-4">
+            <MudAlert Severity="Severity.Info">
+                Reassigning conversation from <strong>@WhatsAppNumber</strong>
+            </MudAlert>
+            
+            <MudText Typo="Typo.body2">
+                Current Agent: <strong>@CurrentAgentName</strong>
+            </MudText>
+            
+            <MudSelect T="string" 
+                      @bind-Value="_selectedAgentId" 
+                      Label="New Agent" 
+                      Variant="Variant.Outlined"
+                      HelperText="Select an available agent with capacity"
+                      Required="true">
+                <MudSelectItem Value="@("")" Disabled="true">Select Agent...</MudSelectItem>
+                @foreach (var agent in AvailableAgents)
+                {
+                    <MudSelectItem Value="@agent.ApplicationUserId">
+                        @agent.DisplayName - @agent.ActiveConversationCount/@agent.MaxConcurrentConversations conversations
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" 
+                  Variant="Variant.Filled" 
+                  OnClick="Confirm"
+                  Disabled="@string.IsNullOrEmpty(_selectedAgentId)">
+            Reassign
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public string ConversationReference { get; set; } = string.Empty;
+    [Parameter] public string CurrentAgentName { get; set; } = string.Empty;
+    [Parameter] public string WhatsAppNumber { get; set; } = string.Empty;
+    [Parameter] public List<AgentDto> AvailableAgents { get; set; } = new();
+    
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    private string _selectedAgentId = string.Empty;
+    
+    private void Cancel() => MudDialog.Cancel();
+    private void Confirm() => MudDialog.Close(_selectedAgentId);
+}

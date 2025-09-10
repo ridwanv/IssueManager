@@ -33,9 +33,8 @@ public class AssignAgentCommandHandler : IRequestHandler<AssignAgentCommand, Res
     {
         await using var db = await _dbContextFactory.CreateAsync(cancellationToken);
         
-        // Get conversation
-        var conversation = await db.Conversations
-            .FirstOrDefaultAsync(c => c.ConversationReference == request.ConversationId, cancellationToken);
+        // Support both string (ConversationReference) and int (Id) lookups as specified in Story 4.15 AC 3
+        var conversation = await GetConversationAsync(db, request.ConversationId, cancellationToken);
             
         if (conversation == null)
         {
@@ -85,5 +84,27 @@ public class AssignAgentCommandHandler : IRequestHandler<AssignAgentCommand, Res
         await _hubWrapper.BroadcastConversationAssigned(request.ConversationId, request.AgentId, agentName);
         
         return Result<bool>.Success(true);
+    }
+    
+    private async Task<Domain.Entities.Conversation?> GetConversationAsync(
+        IApplicationDbContext db, 
+        string conversationId, 
+        CancellationToken cancellationToken)
+    {
+        // First try as ConversationReference (string) - primary method from Story 4.16
+        var conversation = await db.Conversations
+            .FirstOrDefaultAsync(c => c.ConversationReference == conversationId, cancellationToken);
+            
+        if (conversation != null)
+            return conversation;
+        
+        // Try as Id (int) if string lookup failed - supporting flexible ID handling per Story 4.15 AC 3
+        if (int.TryParse(conversationId, out var intId))
+        {
+            conversation = await db.Conversations
+                .FirstOrDefaultAsync(c => c.Id == intId, cancellationToken);
+        }
+        
+        return conversation;
     }
 }

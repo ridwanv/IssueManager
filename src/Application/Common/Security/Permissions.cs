@@ -88,5 +88,8 @@ public static partial class Permissions
         
         [Description("Transfer conversations between agents")]
         public const string Transfer = "Permissions.Conversations.Transfer";
+        
+        [Description("Manage conversation assignments (supervisor level)")]
+        public const string ManageAssignments = "Permissions.Conversations.ManageAssignments";
     }
 } 

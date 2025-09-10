@@ -5,7 +5,11 @@ using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.Assig
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.TransferConversation;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.CompleteConversation;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AddMessage;
+using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.ReassignAgent;
 using CleanArchitecture.Blazor.Domain.Enums;
+using CleanArchitecture.Blazor.Application.Common.Security;
+using CleanArchitecture.Blazor.Application.Common.Interfaces.MultiTenant;
+using Microsoft.AspNetCore.Authorization;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetEscalatedConversations;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetMessages;
 using CleanArchitecture.Blazor.Application.Features.Conversations.Queries.GetAllConversations;
@@ -26,17 +30,23 @@ public class ConversationsController : ControllerBase
     private readonly ILogger<ConversationsController> _logger;
     private readonly IHubContext<ServerHub, ISignalRHub> _hubContext;
     private readonly IApplicationHubWrapper _hubWrapper;
+    private readonly IAutoAssignmentService _autoAssignmentService;
+    private readonly ITenantService _tenantService;
 
     public ConversationsController(
         IMediator mediator, 
         ILogger<ConversationsController> logger,
         IHubContext<ServerHub, ISignalRHub> hubContext,
-        IApplicationHubWrapper hubWrapper)
+        IApplicationHubWrapper hubWrapper,
+        IAutoAssignmentService autoAssignmentService,
+        ITenantService tenantService)
     {
         _mediator = mediator;
         _logger = logger;
         _hubContext = hubContext;
         _hubWrapper = hubWrapper;
+        _autoAssignmentService = autoAssignmentService;
+        _tenantService = tenantService;
     }
 
     /// <summary>
@@ -512,6 +522,105 @@ public class ConversationsController : ControllerBase
     }
 
     /// <summary>
+    /// Reassign a conversation to a different agent (supervisor level)
+    /// Used by supervisors to reassign conversations between agents
+    /// </summary>
+    /// <param name="conversationId">Conversation ID (supports both string ConversationReference and int/Guid ID)</param>
+    /// <param name="request">Reassignment request</param>
+    /// <returns>Success result</returns>
+    [HttpPost("{conversationId}/reassign-agent")]
+    [Authorize(Policy = Permissions.Conversations.ManageAssignments)]
+    public async Task<ActionResult<Result<bool>>> ReassignAgent(string conversationId, [FromBody] ReassignAgentRequest request)
+    {
+        try
+        {
+            var command = new ReassignAgentCommand(
+                conversationId,
+                request.NewAgentId,
+                request.ReasonForReassignment ?? "Reassigned by supervisor");
+            
+            var result = await _mediator.Send(command);
+            
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            
+            _logger.LogInformation("Conversation {ConversationId} reassigned successfully to agent {NewAgentId}", 
+                conversationId, request.NewAgentId);
+            
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reassigning conversation {ConversationId}", conversationId);
+            return StatusCode(500, "An error occurred while reassigning the conversation");
+        }
+    }
+
+    /// <summary>
+    /// Get auto-assignment settings for the current tenant
+    /// Used by supervisors to view auto-assignment configuration
+    /// </summary>
+    /// <returns>Auto-assignment settings</returns>
+    [HttpGet("assignment/auto-assignment-settings")]
+    [Authorize(Policy = Permissions.Conversations.ManageAssignments)]
+    public async Task<ActionResult<Result<AutoAssignmentSettings>>> GetAutoAssignmentSettings()
+    {
+        try
+        {
+            var tenantId = "default"; // TODO: Get current tenant from context
+            var settings = await _autoAssignmentService.GetAutoAssignmentSettingsAsync(tenantId);
+            
+            return Ok(Result<AutoAssignmentSettings>.Success(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving auto-assignment settings");
+            return StatusCode(500, "An error occurred while retrieving auto-assignment settings");
+        }
+    }
+
+    /// <summary>
+    /// Toggle auto-assignment for escalated conversations
+    /// Used by supervisors to enable/disable automatic assignment
+    /// </summary>
+    /// <param name="request">Auto-assignment toggle request</param>
+    /// <returns>Success result</returns>
+    [HttpPost("assignment/toggle-auto-assign")]
+    [Authorize(Policy = Permissions.Conversations.ManageAssignments)]
+    public async Task<ActionResult<Result<bool>>> ToggleAutoAssignment([FromBody] ToggleAutoAssignmentRequest request)
+    {
+        try
+        {
+            var tenantId = "default"; // TODO: Get current tenant from context
+            var settings = await _autoAssignmentService.GetAutoAssignmentSettingsAsync(tenantId);
+            
+            settings.IsEnabled = request.IsEnabled;
+            settings.Strategy = request.Strategy ?? settings.Strategy;
+            settings.LastModified = DateTime.UtcNow;
+            settings.LastModifiedBy = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "System";
+            
+            var result = await _autoAssignmentService.UpdateAutoAssignmentSettingsAsync(tenantId, settings);
+            
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            
+            _logger.LogInformation("Auto-assignment {Status} for tenant {TenantId} with strategy {Strategy}", 
+                request.IsEnabled ? "enabled" : "disabled", tenantId, settings.Strategy);
+            
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error toggling auto-assignment");
+            return StatusCode(500, "An error occurred while updating auto-assignment settings");
+        }
+    }
+
+    /// <summary>
     /// Test endpoint to trigger escalation notification - FOR DEVELOPMENT ONLY
     /// </summary>
     [HttpPost("test-escalation")]
@@ -886,4 +995,22 @@ public class UserIntentInsightsDto
     public Dictionary<string, int> IntentDistribution { get; set; } = new();
     public List<string> TrendingTopics { get; set; } = new();
     public DateTime AnalysisTimestamp { get; set; }
+}
+
+/// <summary>
+/// Request model for reassigning conversations between agents (supervisor level)
+/// </summary>
+public class ReassignAgentRequest
+{
+    public string NewAgentId { get; set; } = default!;
+    public string? ReasonForReassignment { get; set; }
+}
+
+/// <summary>
+/// Request model for toggling auto-assignment settings
+/// </summary>
+public class ToggleAutoAssignmentRequest
+{
+    public bool IsEnabled { get; set; }
+    public AssignmentStrategy? Strategy { get; set; }
 }

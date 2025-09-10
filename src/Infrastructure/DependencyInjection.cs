@@ -187,6 +187,9 @@ public static class DependencyInjection
         // Configure ConversationAnalysisService for AI-powered conversation insights
         services.AddScoped<IConversationAnalysisService, ConversationAnalysisService>();
         
+        // Configure AutoAssignmentService for conversation assignment automation
+        services.AddScoped<IAutoAssignmentService, AutoAssignmentService>();
+        
         // Configure Background Jobs
         services.AddScoped<ProcessCompletedConversationsJob>();
 

@@ -1,0 +1,304 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AssignAgent
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.ReassignAgent
+@using CleanArchitecture.Blazor.Application.Common.Security
+@using CleanArchitecture.Blazor.Domain.Enums
+@using CleanArchitecture.Blazor.Server.UI.Components.Shared
+
+@inject IMediator Mediator
+@inject ISnackbar Snackbar
+@inject IPermissionService PermissionService
+@inject IDialogService DialogService
+
+<MudCard Class="@($"mb-3 {GetPriorityCardClass(Conversation.Priority)}")">
+    <MudCardContent>
+        <div class="d-flex justify-space-between align-start mb-2">
+            <div class="flex-grow-1">
+                <div class="d-flex align-center gap-2 mb-1">
+                    <MudText Typo="Typo.subtitle1">
+                        📱 @(Conversation.WhatsAppPhoneNumber ?? "Unknown Number")
+                    </MudText>
+                    @if (Conversation.Priority > 1)
+                    {
+                        <MudChip T="string" 
+                                Size="Size.Small" 
+                                Color="@GetPriorityColor(Conversation.Priority)"
+                                Icon="@GetPriorityIcon(Conversation.Priority)">
+                            @Conversation.PriorityText
+                        </MudChip>
+                    }
+                </div>
+                <MudText Typo="Typo.body2" Class="mb-2 mud-text-secondary">
+                    @Conversation.EscalationReason
+                </MudText>
+                <div class="d-flex align-center gap-4 mb-2">
+                    <MudChip T="string" Size="Size.Small" 
+                            Color="@GetModeColor(Conversation.Mode)">
+                        @Conversation.ModeText
+                    </MudChip>
+                    <MudText Typo="Typo.caption">
+                        Escalated: @Conversation.EscalatedAt?.ToString("HH:mm")
+                    </MudText>
+                    <MudText Typo="Typo.caption">
+                        Duration: @FormatDuration(Conversation.Duration)
+                    </MudText>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(Conversation.CurrentAgentName))
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                        <div class="d-flex align-center justify-space-between">
+                            <span>Assigned to: @Conversation.CurrentAgentName</span>
+                            @if (_canManageAssignments && AvailableAgents?.Any() == true)
+                            {
+                                <MudButton Variant="Variant.Text" 
+                                          Size="Size.Small" 
+                                          StartIcon="Icons.Material.Filled.SwapHoriz"
+                                          OnClick="HandleReassignClick"
+                                          Disabled="Processing">
+                                    Reassign
+                                </MudButton>
+                            }
+                        </div>
+                    </MudAlert>
+                }
+                else if (_canManageAssignments && AvailableAgents?.Any() == true)
+                {
+                    <div class="d-flex align-center gap-2 mb-2">
+                        <MudSelect T="string" 
+                                  @bind-Value="_selectedAgentId" 
+                                  Label="Assign to Agent" 
+                                  Variant="Variant.Outlined" 
+                                  Dense="true"
+                                  Class="flex-grow-1"
+                                  Disabled="Processing">
+                            <MudSelectItem Value="@("")" Disabled="true">Select Agent...</MudSelectItem>
+                            @foreach (var agent in AvailableAgents.Where(a => a.IsAvailable && a.CanTakeConversations))
+                            {
+                                <MudSelectItem Value="@agent.ApplicationUserId">
+                                    @agent.DisplayName (@agent.ActiveConversationCount/@agent.MaxConcurrentConversations)
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled" 
+                                  Color="Color.Primary" 
+                                  Size="Size.Small"
+                                  StartIcon="Icons.Material.Filled.Assignment"
+                                  OnClick="AssignConversation"
+                                  Disabled="@(Processing || string.IsNullOrEmpty(_selectedAgentId))">
+                            Assign
+                        </MudButton>
+                    </div>
+                }
+            </div>
+            <div class="d-flex flex-column gap-1">
+                @if (string.IsNullOrEmpty(Conversation.CurrentAgentId) && !_canManageAssignments)
+                {
+                    <MudButton Variant="Variant.Filled" 
+                              Color="Color.Primary" 
+                              Size="Size.Small"
+                              StartIcon="Icons.Material.Filled.Assignment"
+                              OnClick="AcceptConversation"
+                              Disabled="Processing">
+                        Accept
+                    </MudButton>
+                }
+                else if (!string.IsNullOrEmpty(Conversation.CurrentAgentId))
+                {
+                    <MudButton Variant="Variant.Outlined" 
+                              Color="Color.Success" 
+                              Size="Size.Small"
+                              StartIcon="Icons.Material.Filled.CheckCircle"
+                              OnClick="CompleteConversation"
+                              Disabled="Processing">
+                        Complete
+                    </MudButton>
+                }
+                <MudButton Variant="Variant.Text" 
+                          Color="Color.Primary" 
+                          Size="Size.Small"
+                          StartIcon="Icons.Material.Filled.Chat"
+                          OnClick="OpenConversation">
+                    View
+                </MudButton>
+            </div>
+        </div>
+    </MudCardContent>
+</MudCard>
+
+
+@code {
+    [Parameter, EditorRequired] public ConversationDto Conversation { get; set; } = default!;
+    [Parameter] public List<CleanArchitecture.Blazor.Application.Features.Conversations.DTOs.AgentDto>? AvailableAgents { get; set; }
+    [Parameter] public bool Processing { get; set; }
+    [Parameter] public EventCallback<ConversationDto> OnConversationAssigned { get; set; }
+    [Parameter] public EventCallback<ConversationDto> OnConversationAccepted { get; set; }
+    [Parameter] public EventCallback<ConversationDto> OnConversationCompleted { get; set; }
+    [Parameter] public EventCallback<ConversationDto> OnConversationViewed { get; set; }
+
+    private bool _canManageAssignments;
+    private string _selectedAgentId = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManageAssignments = await PermissionService.HasPermissionAsync(Permissions.Conversations.ManageAssignments);
+    }
+
+    private async Task AssignConversation()
+    {
+        if (string.IsNullOrEmpty(_selectedAgentId)) return;
+        
+        var selectedAgent = AvailableAgents?.FirstOrDefault(a => a.ApplicationUserId == _selectedAgentId);
+        if (selectedAgent == null) return;
+
+        try
+        {
+            var result = await Mediator.Send(new AssignAgentCommand(Conversation.ConversationReference, _selectedAgentId));
+            
+            if (result.Succeeded)
+            {
+                Snackbar.Add($"Conversation assigned to {selectedAgent.DisplayName}", Severity.Success);
+                _selectedAgentId = string.Empty;
+                await OnConversationAssigned.InvokeAsync(Conversation);
+            }
+            else
+            {
+                Snackbar.Add($"Failed to assign conversation: {result.ErrorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error assigning conversation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task AcceptConversation()
+    {
+        await OnConversationAccepted.InvokeAsync(Conversation);
+    }
+
+    private async Task CompleteConversation()
+    {
+        await OnConversationCompleted.InvokeAsync(Conversation);
+    }
+
+    private async Task OpenConversation()
+    {
+        await OnConversationViewed.InvokeAsync(Conversation);
+    }
+
+    private async Task HandleReassignClick()
+    {
+        Console.WriteLine("[DEBUG] HandleReassignClick called!");
+        
+        var availableAgents = AvailableAgents?
+            .Where(a => a.IsAvailable && a.CanTakeConversations && a.ApplicationUserId != Conversation.CurrentAgentId)
+            .ToList() ?? new List<CleanArchitecture.Blazor.Application.Features.Conversations.DTOs.AgentDto>();
+            
+        if (!availableAgents.Any())
+        {
+            Snackbar.Add("No available agents to reassign to", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters<ReassignAgentDialog>
+        {
+            { x => x.ConversationReference, Conversation.ConversationReference },
+            { x => x.CurrentAgentName, Conversation.CurrentAgentName },
+            { x => x.WhatsAppNumber, Conversation.WhatsAppPhoneNumber ?? "Unknown Number" },
+            { x => x.AvailableAgents, availableAgents }
+        };
+
+        var options = new DialogOptions 
+        { 
+            CloseOnEscapeKey = true, 
+            CloseButton = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<ReassignAgentDialog>("Reassign Conversation", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is string selectedAgentId)
+        {
+            var selectedAgent = availableAgents.FirstOrDefault(a => a.ApplicationUserId == selectedAgentId);
+            if (selectedAgent != null)
+            {
+                try
+                {
+                    var reassignResult = await Mediator.Send(new ReassignAgentCommand(
+                        Conversation.ConversationReference, 
+                        selectedAgentId, 
+                        "Conversation reassigned by supervisor"));
+                    
+                    if (reassignResult.Succeeded)
+                    {
+                        Snackbar.Add($"Conversation reassigned to {selectedAgent.DisplayName}", Severity.Success);
+                        await OnConversationAssigned.InvokeAsync(Conversation);
+                    }
+                    else
+                    {
+                        Snackbar.Add($"Failed to reassign conversation: {reassignResult.ErrorMessage}", Severity.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Error reassigning conversation: {ex.Message}", Severity.Error);
+                }
+            }
+        }
+    }
+
+
+
+    // Helper methods
+    private string GetPriorityCardClass(int priority)
+    {
+        return priority switch
+        {
+            3 => "border-error", // Critical
+            2 => "border-warning", // High
+            _ => "" // Standard
+        };
+    }
+
+    private Color GetPriorityColor(int priority)
+    {
+        return priority switch
+        {
+            3 => Color.Error, // Critical
+            2 => Color.Warning, // High  
+            _ => Color.Primary // Standard
+        };
+    }
+
+    private string GetPriorityIcon(int priority)
+    {
+        return priority switch
+        {
+            3 => Icons.Material.Filled.PriorityHigh, // Critical
+            2 => Icons.Material.Filled.Warning, // High
+            _ => Icons.Material.Filled.Info // Standard
+        };
+    }
+
+    private Color GetModeColor(ConversationMode mode)
+    {
+        return mode switch
+        {
+            ConversationMode.Escalating => Color.Warning,
+            ConversationMode.Human => Color.Info,
+            ConversationMode.HandingBackToBot => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        else
+            return $"{duration.Minutes}m {duration.Seconds}s";
+    }
+}

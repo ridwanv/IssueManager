@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Application.Common.Interfaces;
+using CleanArchitecture.Blazor.Application.Common.Interfaces.MultiTenant;
 using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Enums;
@@ -24,13 +25,19 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
 {
     private readonly IApplicationDbContextFactory _dbContextFactory;
     private readonly IApplicationHubWrapper _hubWrapper;
+    private readonly IAutoAssignmentService _autoAssignmentService;
+    private readonly ITenantService _tenantService;
     
     public EscalateConversationCommandHandler(
         IApplicationDbContextFactory dbContextFactory,
-        IApplicationHubWrapper hubWrapper)
+        IApplicationHubWrapper hubWrapper,
+        IAutoAssignmentService autoAssignmentService,
+        ITenantService tenantService)
     {
         _dbContextFactory = dbContextFactory;
         _hubWrapper = hubWrapper;
+        _autoAssignmentService = autoAssignmentService;
+        _tenantService = tenantService;
     }
     
     public async Task<Result<int>> Handle(EscalateConversationCommand request, CancellationToken cancellationToken)
@@ -121,6 +128,32 @@ public class EscalateConversationCommandHandler : IRequestHandler<EscalateConver
             
         // Send escalation popup to available agents
         await _hubWrapper.BroadcastEscalationPopupToAvailableAgents(escalationPopup);
+        
+        // Attempt auto-assignment if enabled for the tenant
+        try
+        {
+            var tenantId = existingConversation.TenantId;
+            
+            if (await _autoAssignmentService.IsAutoAssignmentEnabledAsync(tenantId, cancellationToken))
+            {
+                var autoAssignResult = await _autoAssignmentService.AssignConversationAsync(
+                    existingConversation.ConversationReference, 
+                    tenantId, 
+                    cancellationToken);
+                
+                // Auto-assignment is best-effort; we don't fail the escalation if it doesn't work
+                if (autoAssignResult.Succeeded && autoAssignResult.Data.WasAssigned)
+                {
+                    // The assignment notification will be sent by the AssignAgentCommand handler
+                    // so no additional SignalR notification needed here
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Auto-assignment failure should not prevent escalation success
+            // Error is already logged in AutoAssignmentService
+        }
             
         return Result<int>.Success(existingConversation.Id);
     }

@@ -106,6 +106,23 @@ public class ServerHubWrapper : IApplicationHubWrapper
         await _hubContext.Clients.User(toAgentId).ConversationTransferredTo(conversationId, fromAgentId, fromAgentName);
     }
 
+    public async Task BroadcastConversationReassigned(string conversationId, string previousAgentId, string newAgentId, string newAgentName, string reason)
+    {
+        // Notify all clients about the reassignment
+        await _hubContext.Clients.All.ConversationReassigned(conversationId, previousAgentId, newAgentId, newAgentName, reason).ConfigureAwait(false);
+        
+        // Send targeted notifications to the agents involved
+        if (!string.IsNullOrEmpty(previousAgentId))
+        {
+            await _hubContext.Clients.User(previousAgentId).ConversationReassignedFrom(conversationId, newAgentId, newAgentName, reason);
+        }
+        
+        await _hubContext.Clients.User(newAgentId).ConversationReassignedTo(conversationId, previousAgentId, reason);
+        
+        // Also notify supervisors/managers about the reassignment
+        await _hubContext.Clients.Group("Supervisors").ConversationReassignmentNotification(conversationId, previousAgentId, newAgentId, newAgentName, reason);
+    }
+
     public async Task BroadcastConversationCompleted(string conversationId, string agentId)
     {
         await _hubContext.Clients.All.ConversationCompleted(conversationId, agentId).ConfigureAwait(false);

@@ -1,0 +1,109 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+
+<MudSelect T="string" 
+           @bind-Value="SelectedAgentId" 
+           Label="@Label" 
+           Variant="Variant.Outlined" 
+           Dense="@Dense"
+           Disabled="@Disabled"
+           HelperText="@HelperText"
+           Class="@Class">
+    <MudSelectItem Value="@("")" Disabled="true">@Placeholder</MudSelectItem>
+    @foreach (var agent in FilteredAgents)
+    {
+        <MudSelectItem Value="@agent.ApplicationUserId">
+            <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center gap-2">
+                    <MudIcon Icon="@GetStatusIcon(agent.Status)" Color="@GetStatusColor(agent.Status)" Size="Size.Small" />
+                    <span>@agent.DisplayName</span>
+                </div>
+                <div class="d-flex align-center gap-2">
+                    <MudChip T="string" Size="Size.Small" Color="@GetWorkloadColor(agent.WorkloadPercentage)">
+                        @agent.ActiveConversationCount/@agent.MaxConcurrentConversations
+                    </MudChip>
+                    @if (ShowCapacity)
+                    {
+                        <MudProgressCircular Value="@agent.WorkloadPercentage" 
+                                           Color="@GetWorkloadColor(agent.WorkloadPercentage)"
+                                           Size="Size.Small"/>
+                    }
+                </div>
+            </div>
+        </MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public string? SelectedAgentId { get; set; }
+    [Parameter] public EventCallback<string?> SelectedAgentIdChanged { get; set; }
+    [Parameter] public List<AgentDto>? AvailableAgents { get; set; }
+    [Parameter] public string Label { get; set; } = "Select Agent";
+    [Parameter] public string Placeholder { get; set; } = "Select an agent...";
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public bool Dense { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ShowCapacity { get; set; } = true;
+    [Parameter] public bool OnlyAvailable { get; set; } = true;
+    [Parameter] public bool OnlyCanTakeConversations { get; set; } = true;
+    [Parameter] public string? ExcludeAgentId { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private IEnumerable<AgentDto> FilteredAgents
+    {
+        get
+        {
+            if (AvailableAgents == null) return Enumerable.Empty<AgentDto>();
+            
+            var filtered = AvailableAgents.AsEnumerable();
+            
+            if (OnlyAvailable)
+                filtered = filtered.Where(a => a.IsAvailable);
+                
+            if (OnlyCanTakeConversations)
+                filtered = filtered.Where(a => a.CanTakeConversations);
+                
+            if (!string.IsNullOrEmpty(ExcludeAgentId))
+                filtered = filtered.Where(a => a.ApplicationUserId != ExcludeAgentId);
+            
+            return filtered.OrderByDescending(a => a.IsAvailable)
+                          .ThenBy(a => a.WorkloadPercentage)
+                          .ThenBy(a => a.DisplayName);
+        }
+    }
+
+    private string GetStatusIcon(CleanArchitecture.Blazor.Domain.Enums.AgentStatus status)
+    {
+        return status switch
+        {
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Available => Icons.Material.Filled.CheckCircle,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Busy => Icons.Material.Filled.Schedule,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Break => Icons.Material.Filled.Coffee,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Training => Icons.Material.Filled.School,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Offline => Icons.Material.Filled.RadioButtonUnchecked,
+            _ => Icons.Material.Filled.Help
+        };
+    }
+
+    private Color GetStatusColor(CleanArchitecture.Blazor.Domain.Enums.AgentStatus status)
+    {
+        return status switch
+        {
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Available => Color.Success,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Busy => Color.Warning,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Break => Color.Info,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Training => Color.Secondary,
+            CleanArchitecture.Blazor.Domain.Enums.AgentStatus.Offline => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetWorkloadColor(double percentage)
+    {
+        return percentage switch
+        {
+            <= 50 => Color.Success,
+            <= 80 => Color.Warning,
+            _ => Color.Error
+        };
+    }
+}

@@ -23,6 +23,9 @@
 @inject NavigationManager Navigation
 @inject IUserContextAccessor CurrentUser
 @inject SignalRConnectionService SignalRConnectionService
+@inject IPermissionService PermissionService
+@inject IJSRuntime JSRuntime
+@inject IAutoAssignmentService AutoAssignmentService
 @implements IAsyncDisposable
 
 <script src="~/js/notifications.js"></script>
@@ -107,7 +110,8 @@
                         <MudIcon Icon="Icons.Material.Filled.PriorityHigh" Class="mr-2 mud-error-text"/>
                         <MudText Typo="Typo.h6">Escalated Conversations (@_escalatedConversations.Count)</MudText>
                     </div>
-                    <MudSwitch T="bool" @bind-Checked="_autoAssign" 
+                    <MudSwitch T="bool" Checked="_autoAssign" 
+                              CheckedChanged="OnAutoAssignToggle"
                               Label="Auto-assign" 
                               Color="Color.Primary"
                               Size="Size.Small"/>
@@ -136,80 +140,14 @@
                     <div style="height: 500px; overflow-y: auto;">
                         @foreach (var conversation in _escalatedConversations)
                         {
-                            <MudCard Class="@($"mb-3 {GetPriorityCardClass(conversation.Priority)}")">
-                                <MudCardContent>
-                                    <div class="d-flex justify-space-between align-start mb-2">
-                                        <div class="flex-grow-1">
-                                            <div class="d-flex align-center gap-2 mb-1">
-                                                <MudText Typo="Typo.subtitle1">
-                                                    📱 @(conversation.WhatsAppPhoneNumber ?? "Unknown Number")
-                                                </MudText>
-                                                @if (conversation.Priority > 1)
-                                                {
-                                                    <MudChip T="string" 
-                                                            Size="Size.Small" 
-                                                            Color="@GetPriorityColor(conversation.Priority)"
-                                                            Icon="@GetPriorityIcon(conversation.Priority)">
-                                                        @conversation.PriorityText
-                                                    </MudChip>
-                                                }
-                                            </div>
-                                            <MudText Typo="Typo.body2" Class="mb-2 mud-text-secondary">
-                                                @conversation.EscalationReason
-                                            </MudText>
-                                            <div class="d-flex align-center gap-4 mb-2">
-                                                <MudChip T="string" Size="Size.Small" 
-                                                        Color="@GetModeColor(conversation.Mode)">
-                                                    @conversation.ModeText
-                                                </MudChip>
-                                                <MudText Typo="Typo.caption">
-                                                    Escalated: @conversation.EscalatedAt?.ToString("HH:mm")
-                                                </MudText>
-                                                <MudText Typo="Typo.caption">
-                                                    Duration: @FormatDuration(conversation.Duration)
-                                                </MudText>
-                                            </div>
-                                            @if (!string.IsNullOrEmpty(conversation.CurrentAgentName))
-                                            {
-                                                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
-                                                    Assigned to: @conversation.CurrentAgentName
-                                                </MudAlert>
-                                            }
-                                        </div>
-                                        <div class="d-flex flex-column gap-1">
-                                            @if (string.IsNullOrEmpty(conversation.CurrentAgentId))
-                                            {
-                                                <MudButton Variant="Variant.Filled" 
-                                                          Color="Color.Primary" 
-                                                          Size="Size.Small"
-                                                          StartIcon="Icons.Material.Filled.Assignment"
-                                                          OnClick="() => AcceptConversation(conversation)"
-                                                          Disabled="_processing">
-                                                    Accept
-                                                </MudButton>
-                                            }
-                                            else
-                                            {
-                                                <MudButton Variant="Variant.Outlined" 
-                                                          Color="Color.Success" 
-                                                          Size="Size.Small"
-                                                          StartIcon="Icons.Material.Filled.CheckCircle"
-                                                          OnClick="() => CompleteConversation(conversation)"
-                                                          Disabled="_processing">
-                                                    Complete
-                                                </MudButton>
-                                            }
-                                            <MudButton Variant="Variant.Text" 
-                                                      Color="Color.Primary" 
-                                                      Size="Size.Small"
-                                                      StartIcon="Icons.Material.Filled.Chat"
-                                                      OnClick="() => OpenConversation(conversation)">
-                                                View
-                                            </MudButton>
-                                        </div>
-                                    </div>
-                                </MudCardContent>
-                            </MudCard>
+                            <ConversationAssignmentCard @key="conversation.Id"
+                                                       Conversation="conversation"
+                                                       AvailableAgents="_availableAgents"
+                                                       Processing="_processing"
+                                                       OnConversationAssigned="OnConversationAssigned"
+                                                       OnConversationAccepted="OnConversationAccepted"
+                                                       OnConversationCompleted="OnConversationCompleted"
+                                                       OnConversationViewed="OnConversationViewed" />
                         }
                     </div>
                 }
@@ -242,6 +180,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadNotificationPreferences();
+        await LoadAutoAssignmentSettings();
         await RefreshData();
         
         // Delay SignalR connection to ensure page is fully loaded and authenticated
@@ -271,7 +210,14 @@
                 _escalatedConversations = escalatedResult.Data;
             
             if (agentsResult.Succeeded)
+            {
                 _availableAgents = agentsResult.Data;
+                Console.WriteLine($"AgentDashboard - Loaded {_availableAgents.Count} available agents");
+            }
+            else
+            {
+                Console.WriteLine($"AgentDashboard - Failed to load agents: {agentsResult.ErrorMessage}");
+            }
 
             _lastUpdate = DateTime.Now;
         }
@@ -286,12 +232,19 @@
         }
     }
 
-    private async Task AcceptConversation(ConversationDto conversation)
+    // Callback methods for ConversationAssignmentCard
+    private async Task OnConversationAssigned(ConversationDto conversation)
+    {
+        await RefreshData();
+    }
+
+    private async Task OnConversationAccepted(ConversationDto conversation)
     {
         _processing = true;
         try
         {
-            var result = await Mediator.Send(new AssignAgentCommand(conversation.ConversationReference, "current-user-id")); // TODO: Get current user ID
+            var currentUserId = CurrentUser.Current?.UserId ?? "";
+            var result = await Mediator.Send(new AssignAgentCommand(conversation.ConversationReference, currentUserId));
             
             if (result.Succeeded)
             {
@@ -313,7 +266,7 @@
         }
     }
 
-    private async Task CompleteConversation(ConversationDto conversation)
+    private async Task OnConversationCompleted(ConversationDto conversation)
     {
         _processing = true;
         try
@@ -340,9 +293,8 @@
         }
     }
 
-    private async Task OpenConversation(ConversationDto conversation)
+    private async Task OnConversationViewed(ConversationDto conversation)
     {
-        // TODO: Implement conversation detail view
         await JS.InvokeVoidAsync("open", $"/conversations/{conversation.Id}", "_blank");
     }
 
@@ -408,6 +360,9 @@
                 return Task.CompletedTask;
             };
 
+            // Wait a moment for connection state to stabilize
+            await Task.Delay(100);
+            
             if (_hubConnection.State == HubConnectionState.Connected)
             {
                  // Join the agent group to receive notifications
@@ -421,6 +376,7 @@
             else
             {
                 _connectionStatus = $"Failed: Connection state is {_hubConnection.State}";
+                Console.WriteLine($"SignalR: Connection failed, state is {_hubConnection.State}");
                 StartPollingMode();
             }
         }
@@ -690,36 +646,6 @@
         };
     }
 
-    // Priority styling methods
-    private string GetPriorityCardClass(int priority)
-    {
-        return priority switch
-        {
-            3 => "border-error", // Critical
-            2 => "border-warning", // High
-            _ => "" // Standard
-        };
-    }
-
-    private Color GetPriorityColor(int priority)
-    {
-        return priority switch
-        {
-            3 => Color.Error, // Critical
-            2 => Color.Warning, // High  
-            _ => Color.Primary // Standard
-        };
-    }
-
-    private string GetPriorityIcon(int priority)
-    {
-        return priority switch
-        {
-            3 => Icons.Material.Filled.PriorityHigh, // Critical
-            2 => Icons.Material.Filled.Warning, // High
-            _ => Icons.Material.Filled.Info // Standard
-        };
-    }
 
     private async Task LoadNotificationPreferences()
     {
@@ -746,6 +672,56 @@
                 TenantId = CurrentUser.Current?.TenantId ?? ""
             };
         }
+    }
+
+    private async Task LoadAutoAssignmentSettings()
+    {
+        try
+        {
+            var tenantId = CurrentUser.Current?.TenantId ?? "";
+            var settings = await AutoAssignmentService.GetAutoAssignmentSettingsAsync(tenantId);
+            _autoAssign = settings.IsEnabled;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load auto-assignment settings: {ex.Message}");
+            _autoAssign = false; // Default to false if loading fails
+        }
+    }
+
+    private async Task OnAutoAssignToggle(bool enabled)
+    {
+        try
+        {
+            var tenantId = CurrentUser.Current?.TenantId ?? "";
+            var settings = await AutoAssignmentService.GetAutoAssignmentSettingsAsync(tenantId);
+            
+            settings.IsEnabled = enabled;
+            settings.LastModifiedBy = CurrentUser.Current?.UserId ?? "";
+            settings.LastModified = DateTime.UtcNow;
+            
+            var result = await AutoAssignmentService.UpdateAutoAssignmentSettingsAsync(tenantId, settings);
+            
+            if (result.Succeeded)
+            {
+                _autoAssign = enabled;
+                Snackbar.Add($"Auto-assignment {(enabled ? "enabled" : "disabled")}", Severity.Success);
+            }
+            else
+            {
+                // Revert the toggle if update failed
+                _autoAssign = !enabled;
+                Snackbar.Add($"Failed to update auto-assignment setting: {result.ErrorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Revert the toggle if update failed
+            _autoAssign = !enabled;
+            Snackbar.Add($"Error updating auto-assignment setting: {ex.Message}", Severity.Error);
+        }
+        
+        StateHasChanged();
     }
 
     private async Task OnTargetedEscalationNotification(int conversationId, string reason, string customerPhoneNumber, int priority, DateTime escalatedAt)
