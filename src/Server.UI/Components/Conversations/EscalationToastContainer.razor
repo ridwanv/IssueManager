@@ -1,0 +1,351 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using Microsoft.AspNetCore.SignalR.Client
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
+@inject IJSRuntime JS
+@inject ILogger<EscalationToastContainer> Logger
+@inject SignalRConnectionService SignalRService
+
+<!-- Toast Container positioned in bottom-right corner -->
+<div class="escalation-toast-container">
+    @foreach (var toast in _activeToasts.OrderByDescending(t => t.CreatedAt))
+    {
+        <div class="escalation-toast-wrapper" 
+             style="transform: translateY(@(GetToastOffset(toast))px); z-index: @(GetToastZIndex(toast));">
+            <EscalationToast EscalationData="@toast.EscalationData" 
+                             IsVisible="@toast.IsVisible"
+                             AutoDismissTimeoutMs="@AutoDismissTimeoutMs"
+                             OnAccepted="@((conversationId) => HandleToastAccepted(toast, conversationId))"
+                             OnDeclined="@((conversationId) => HandleToastDeclined(toast, conversationId))"
+                             OnDismissed="@((conversationId) => HandleToastDismissed(toast, conversationId))" />
+        </div>
+    }
+</div>
+
+<style>
+    .escalation-toast-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        pointer-events: none;
+        z-index: 9999;
+    }
+
+    .escalation-toast-wrapper {
+        pointer-events: auto;
+        position: relative;
+        transition: transform 0.3s ease-out;
+        margin-bottom: 12px;
+    }
+
+    .escalation-toast-wrapper:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Mobile responsive adjustments */
+    @@media (max-width: 600px) {
+        .escalation-toast-container {
+            bottom: 10px;
+            right: 10px;
+            left: 10px;
+            width: auto;
+        }
+        
+        .escalation-toast-wrapper {
+            margin-bottom: 8px;
+        }
+    }
+
+    /* Tablet adjustments */
+    @@media (min-width: 601px) and (max-width: 900px) {
+        .escalation-toast-container {
+            bottom: 15px;
+            right: 15px;
+        }
+    }
+</style>
+
+@code {
+    private readonly List<ToastItem> _activeToasts = new();
+    private readonly object _toastLock = new();
+    private Timer? _cleanupTimer;
+    private int _nextToastId = 1;
+
+    [Parameter] public int MaxToastCount { get; set; } = 5;
+    [Parameter] public int AutoDismissTimeoutMs { get; set; } = 30000; // 30 seconds
+    [Parameter] public EventCallback<string> OnEscalationAccepted { get; set; }
+    [Parameter] public EventCallback<string> OnEscalationDeclined { get; set; }
+    [Parameter] public EventCallback<string> OnEscalationDismissed { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Start periodic cleanup timer
+        _cleanupTimer = new Timer(PerformCleanup, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        Logger.LogInformation("EscalationToastContainer initialized with max {MaxToastCount} toasts", MaxToastCount);
+    }
+
+    public async Task ShowToast(EscalationPopupDto escalationData)
+    {
+        if (escalationData == null) return;
+
+        try
+        {
+            lock (_toastLock)
+            {
+                // Check if toast for this conversation already exists
+                var existingToast = _activeToasts.FirstOrDefault(t => 
+                    t.EscalationData?.ConversationReference == escalationData.ConversationReference);
+                
+                if (existingToast != null)
+                {
+                    Logger.LogInformation("Toast for conversation {ConversationId} already exists, updating", 
+                        escalationData.ConversationReference);
+                    
+                    // Update existing toast data and refresh visibility
+                    existingToast.EscalationData = escalationData;
+                    existingToast.CreatedAt = DateTime.UtcNow;
+                    existingToast.IsVisible = true;
+                    return;
+                }
+
+                // Enforce maximum toast count by removing oldest
+                while (_activeToasts.Count >= MaxToastCount)
+                {
+                    var oldestToast = _activeToasts.OrderBy(t => t.CreatedAt).First();
+                    _activeToasts.Remove(oldestToast);
+                    Logger.LogInformation("Removed oldest toast to maintain max count of {MaxToastCount}", MaxToastCount);
+                }
+
+                // Create new toast
+                var newToast = new ToastItem
+                {
+                    Id = _nextToastId++,
+                    EscalationData = escalationData,
+                    CreatedAt = DateTime.UtcNow,
+                    IsVisible = true
+                };
+
+                _activeToasts.Add(newToast);
+                Logger.LogInformation("Added new toast for conversation {ConversationId}. Total toasts: {ToastCount}", 
+                    escalationData.ConversationReference, _activeToasts.Count);
+            }
+
+            await InvokeAsync(StateHasChanged);
+            
+            // Play notification sound
+            await PlayNotificationSound();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error showing toast for conversation {ConversationId}", 
+                escalationData.ConversationReference);
+        }
+    }
+
+    public async Task DismissToast(string conversationId)
+    {
+        try
+        {
+            lock (_toastLock)
+            {
+                var toast = _activeToasts.FirstOrDefault(t => 
+                    t.EscalationData?.ConversationReference == conversationId);
+                
+                if (toast != null)
+                {
+                    _activeToasts.Remove(toast);
+                    Logger.LogInformation("Dismissed toast for conversation {ConversationId}", conversationId);
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error dismissing toast for conversation {ConversationId}", conversationId);
+        }
+    }
+
+    public async Task DismissAllToasts()
+    {
+        try
+        {
+            lock (_toastLock)
+            {
+                var count = _activeToasts.Count;
+                _activeToasts.Clear();
+                Logger.LogInformation("Dismissed all {Count} toasts", count);
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error dismissing all toasts");
+        }
+    }
+
+    public int GetActiveToastCount()
+    {
+        lock (_toastLock)
+        {
+            return _activeToasts.Count;
+        }
+    }
+
+    public bool HasActiveToasts()
+    {
+        lock (_toastLock)
+        {
+            return _activeToasts.Any();
+        }
+    }
+
+    private async Task HandleToastAccepted(ToastItem toast, string conversationId)
+    {
+        try
+        {
+            // Remove the toast immediately
+            await DismissToast(conversationId);
+
+            // Broadcast acceptance via SignalR to dismiss on all agents
+            if (SignalRService.IsConnected)
+            {
+                await SignalRService.TryInvokeAsync("BroadcastEscalationAccepted", conversationId);
+            }
+
+            // Invoke callback
+            if (OnEscalationAccepted.HasDelegate)
+            {
+                await OnEscalationAccepted.InvokeAsync(conversationId);
+            }
+
+            Logger.LogInformation("Toast accepted for conversation {ConversationId}", conversationId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling toast acceptance for conversation {ConversationId}", conversationId);
+        }
+    }
+
+    private async Task HandleToastDeclined(ToastItem toast, string conversationId)
+    {
+        try
+        {
+            // Remove the toast
+            await DismissToast(conversationId);
+
+            // Invoke callback
+            if (OnEscalationDeclined.HasDelegate)
+            {
+                await OnEscalationDeclined.InvokeAsync(conversationId);
+            }
+
+            Logger.LogInformation("Toast declined for conversation {ConversationId}", conversationId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling toast decline for conversation {ConversationId}", conversationId);
+        }
+    }
+
+    private async Task HandleToastDismissed(ToastItem toast, string conversationId)
+    {
+        try
+        {
+            // Remove the toast
+            await DismissToast(conversationId);
+
+            // Broadcast persistent escalation notification to maintain it for other agents
+            if (SignalRService.IsConnected && toast.EscalationData != null)
+            {
+                await SignalRService.TryInvokeAsync("BroadcastEscalationPersistentNotification", 
+                    conversationId,
+                    toast.EscalationData.EscalationReason,
+                    toast.EscalationData.PhoneNumber,
+                    toast.EscalationData.Priority,
+                    toast.EscalationData.EscalatedAt);
+            }
+
+            // Invoke callback
+            if (OnEscalationDismissed.HasDelegate)
+            {
+                await OnEscalationDismissed.InvokeAsync(conversationId);
+            }
+
+            Logger.LogInformation("Toast dismissed for conversation {ConversationId}", conversationId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling toast dismissal for conversation {ConversationId}", conversationId);
+        }
+    }
+
+    private int GetToastOffset(ToastItem toast)
+    {
+        // Calculate vertical offset for stacking (newer toasts on top)
+        var index = _activeToasts.OrderByDescending(t => t.CreatedAt).ToList().IndexOf(toast);
+        return -(index * 152); // 140px toast height + 12px spacing
+    }
+
+    private int GetToastZIndex(ToastItem toast)
+    {
+        // Higher z-index for newer toasts
+        var index = _activeToasts.OrderByDescending(t => t.CreatedAt).ToList().IndexOf(toast);
+        return 9999 - index;
+    }
+
+    private async Task PlayNotificationSound()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("playNotificationSound", "escalation");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error playing notification sound");
+        }
+    }
+
+    private void PerformCleanup(object? state)
+    {
+        try
+        {
+            lock (_toastLock)
+            {
+                // Remove toasts older than 5 minutes (backup cleanup)
+                var cutoffTime = DateTime.UtcNow.AddMinutes(-5);
+                var toastsToRemove = _activeToasts.Where(t => t.CreatedAt < cutoffTime).ToList();
+                
+                foreach (var toast in toastsToRemove)
+                {
+                    _activeToasts.Remove(toast);
+                    Logger.LogInformation("Cleaned up expired toast for conversation {ConversationId}", 
+                        toast.EscalationData?.ConversationReference ?? "unknown");
+                }
+
+                if (toastsToRemove.Any())
+                {
+                    InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error during toast cleanup");
+        }
+    }
+
+    public void Dispose()
+    {
+        _cleanupTimer?.Dispose();
+        Logger.LogInformation("EscalationToastContainer disposed");
+    }
+
+    private class ToastItem
+    {
+        public int Id { get; set; }
+        public EscalationPopupDto? EscalationData { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public bool IsVisible { get; set; }
+    }
+}

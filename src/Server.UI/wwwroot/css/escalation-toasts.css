@@ -1,0 +1,216 @@
+/* Escalation Toast Responsive Styles */
+
+/* Base toast styling for all devices */
+.escalation-toast-base {
+    position: fixed;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+    z-index: 9999;
+}
+
+/* Desktop and large tablets (default) */
+.escalation-toast-container {
+    bottom: 20px;
+    right: 20px;
+}
+
+.escalation-toast {
+    width: 320px;
+    min-height: 140px;
+}
+
+/* Small tablets and large phones */
+@media (max-width: 900px) and (min-width: 601px) {
+    .escalation-toast-container {
+        bottom: 15px;
+        right: 15px;
+    }
+    
+    .escalation-toast {
+        width: 300px;
+        min-height: 130px;
+    }
+    
+    .escalation-toast .mud-button {
+        min-height: 32px;
+        min-width: 65px;
+        font-size: 0.8rem;
+    }
+}
+
+/* Mobile phones and small devices */
+@media (max-width: 600px) {
+    .escalation-toast-container {
+        bottom: 10px;
+        right: 10px;
+        left: 10px;
+        width: auto;
+    }
+    
+    .escalation-toast {
+        width: 280px !important;
+        min-height: 120px !important;
+        margin: 0 auto;
+    }
+    
+    .escalation-toast .mud-card {
+        width: 280px !important;
+        min-height: 120px !important;
+        padding: 12px !important;
+    }
+    
+    /* Touch-friendly buttons for mobile */
+    .escalation-toast .mud-button {
+        min-height: 36px;
+        min-width: 60px;
+        font-size: 0.75rem;
+        padding: 6px 12px;
+    }
+    
+    /* Improved spacing for mobile */
+    .escalation-toast .mud-card-actions {
+        margin-top: 8px !important;
+    }
+    
+    .escalation-toast .mud-text {
+        font-size: 0.8rem;
+    }
+    
+    .escalation-toast .mud-text.mud-typography-subtitle2 {
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    /* Improve button spacing on mobile */
+    .escalation-toast .mud-stack-row {
+        gap: 6px !important;
+    }
+}
+
+/* Extra small devices (very small phones) */
+@media (max-width: 360px) {
+    .escalation-toast {
+        width: 260px !important;
+        min-height: 110px !important;
+    }
+    
+    .escalation-toast .mud-card {
+        width: 260px !important;
+        min-height: 110px !important;
+        padding: 10px !important;
+    }
+    
+    .escalation-toast .mud-button {
+        min-height: 32px;
+        min-width: 50px;
+        font-size: 0.7rem;
+        padding: 4px 8px;
+    }
+    
+    .escalation-toast .mud-text {
+        font-size: 0.75rem;
+    }
+}
+
+/* Landscape orientation adjustments for mobile */
+@media (max-width: 900px) and (orientation: landscape) {
+    .escalation-toast-container {
+        bottom: 5px;
+        right: 10px;
+    }
+    
+    .escalation-toast {
+        min-height: 100px !important;
+    }
+    
+    .escalation-toast .mud-card {
+        min-height: 100px !important;
+        padding: 10px !important;
+    }
+}
+
+/* Swipe gesture support styles */
+.escalation-toast-swipeable {
+    touch-action: pan-x;
+    user-select: none;
+}
+
+.escalation-toast-swipe-indicator {
+    position: absolute;
+    top: 50%;
+    right: -30px;
+    transform: translateY(-50%);
+    opacity: 0;
+    transition: opacity 0.2s ease-out;
+    color: var(--mud-palette-error);
+    font-size: 1.2rem;
+}
+
+.escalation-toast-swipe-indicator.visible {
+    opacity: 1;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .escalation-toast-critical {
+        border-left-width: 6px;
+        border-left-color: #ff0000;
+    }
+    
+    .escalation-toast-standard {
+        border-left-width: 4px;
+        border-left-color: #0066cc;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .escalation-toast,
+    .escalation-toast-wrapper {
+        transition: none;
+        animation: none;
+    }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    .escalation-toast-critical {
+        box-shadow: 0 8px 32px rgba(255, 87, 51, 0.3) !important;
+    }
+    
+    .escalation-toast .mud-card {
+        background-color: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-divider);
+    }
+}
+
+/* Ensure toasts don't overlap with bottom navigation on mobile PWAs */
+@media (max-width: 600px) and (display-mode: standalone) {
+    .escalation-toast-container {
+        bottom: 20px; /* Extra space for PWA navigation */
+    }
+}
+
+/* iPad specific adjustments */
+@media (min-width: 601px) and (max-width: 1024px) and (orientation: portrait) {
+    .escalation-toast-container {
+        bottom: 20px;
+        right: 20px;
+    }
+    
+    .escalation-toast {
+        width: 320px;
+        min-height: 140px;
+    }
+}
+
+@media (min-width: 601px) and (max-width: 1024px) and (orientation: landscape) {
+    .escalation-toast-container {
+        bottom: 15px;
+        right: 15px;
+    }
+    
+    .escalation-toast {
+        width: 300px;
+        min-height: 130px;
+    }
+}

@@ -1,0 +1,392 @@
+@using CleanArchitecture.Blazor.Application.Features.Conversations.DTOs
+@using CleanArchitecture.Blazor.Application.Features.Conversations.Commands.AcceptEscalation
+@inject IMediator Mediator
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+@if (IsVisible && EscalationData != null)
+{
+    <div @ref="toastElement" 
+         class="escalation-toast @(IsCritical ? "escalation-toast-critical" : "escalation-toast-standard") @(_isAnimating ? "escalation-toast-enter" : "")"
+         style="z-index: 9999; position: fixed;">
+        <MudCard Class="pa-4" Style="width: 320px; min-height: 140px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);">
+            
+            <!-- Toast Header -->
+            <div class="d-flex justify-space-between align-center mb-2">
+                <div class="d-flex align-center gap-2">
+                    <MudIcon Icon="@Icons.Material.Filled.SupportAgent" 
+                             Color="@(IsCritical ? Color.Error : Color.Primary)" 
+                             Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle2" Class="@(IsCritical ? "mud-text-error" : "mud-text-primary")">
+                        Chat Escalation
+                    </MudText>
+                    @if (IsCritical)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled" Text="CRITICAL" />
+                    }
+                </div>
+                
+                <!-- Dismiss Button -->
+                <MudIconButton Icon="@Icons.Material.Filled.Close" 
+                               Size="Size.Small" 
+                               Color="Color.Default"
+                               OnClick="DismissToast"
+                               Class="dismiss-button" />
+            </div>
+
+            <!-- Customer Information -->
+            <div class="mb-2">
+                <MudText Typo="Typo.body2" Class="mb-1">
+                    <strong>@EscalationData.CustomerName</strong> • @EscalationData.PhoneNumber
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    @TruncateText(EscalationData.EscalationReason, 60)
+                </MudText>
+            </div>
+
+            <!-- Toast Actions -->
+            <MudCardActions Class="pa-0 mt-3">
+                <MudStack Row="true" Spacing="2" Class="w-100" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.caption" Class="mud-text-disabled align-self-center">
+                        @FormatTimeAgo(EscalationData.EscalatedAt)
+                    </MudText>
+                    
+                    <MudStack Row="true" Spacing="1">
+                        <MudButton OnClick="DismissToast" 
+                                   Variant="Variant.Text" 
+                                   Size="Size.Small"
+                                   Color="Color.Default"
+                                   Disabled="_processing">
+                            Dismiss
+                        </MudButton>
+                        <MudButton OnClick="DeclineEscalation" 
+                                   Variant="Variant.Outlined" 
+                                   Color="Color.Warning"
+                                   Size="Size.Small"
+                                   Disabled="_processing">
+                            Decline
+                        </MudButton>
+                        <MudButton OnClick="AcceptEscalation" 
+                                   Variant="Variant.Filled" 
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   Loading="_processing">
+                            Accept
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+            </MudCardActions>
+        </MudCard>
+        
+        <!-- Swipe Indicator for mobile gestures -->
+        <div class="escalation-toast-swipe-indicator">
+            <MudIcon Icon="@Icons.Material.Filled.SwipeRight" />
+        </div>
+    </div>
+}
+
+<style>
+    .escalation-toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    .escalation-toast-enter {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    .escalation-toast-standard {
+        border-left: 4px solid var(--mud-palette-primary);
+    }
+
+    .escalation-toast-critical {
+        border-left: 4px solid var(--mud-palette-error);
+        box-shadow: 0 8px 32px rgba(244, 67, 54, 0.25) !important;
+    }
+
+    .dismiss-button {
+        width: 24px;
+        height: 24px;
+    }
+
+    /* Mobile responsive design */
+    @@media (max-width: 600px) {
+        .escalation-toast {
+            width: 280px !important;
+            min-height: 120px !important;
+            bottom: 10px;
+            right: 10px;
+        }
+        
+        .escalation-toast .mud-card {
+            width: 280px !important;
+            min-height: 120px !important;
+        }
+    }
+
+    /* Touch-friendly buttons for mobile */
+    @@media (max-width: 600px) {
+        .escalation-toast .mud-button {
+            min-height: 36px;
+            min-width: 60px;
+        }
+    }
+</style>
+
+@code {
+    private bool _processing = false;
+    private bool _isAnimating = false;
+    private Timer? _autoDismissTimer;
+    private bool _isDisposed = false;
+    private ElementReference toastElement;
+    private DotNetObjectReference<EscalationToast>? _dotNetRef;
+
+    [Parameter] public EscalationPopupDto? EscalationData { get; set; }
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public int AutoDismissTimeoutMs { get; set; } = 30000; // 30 seconds default
+    [Parameter] public EventCallback<string> OnAccepted { get; set; }
+    [Parameter] public EventCallback<string> OnDeclined { get; set; }
+    [Parameter] public EventCallback<string> OnDismissed { get; set; }
+
+    // Computed property for critical priority styling
+    private bool IsCritical => EscalationData?.Priority >= 3;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsVisible && EscalationData != null && !_isAnimating)
+        {
+            await StartToastAnimation();
+            StartAutoDismissTimer();
+            await InitializeGestures();
+        }
+        else if (!IsVisible && _isAnimating)
+        {
+            await StopToastAnimation();
+            await CleanupGestures();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+        }
+    }
+
+    private async Task InitializeGestures()
+    {
+        try
+        {
+            if (_dotNetRef != null && toastElement.Context != null)
+            {
+                await JS.InvokeVoidAsync("escalationToastGestures.initializeSwipeGestures", 
+                    toastElement, _dotNetRef);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing toast gestures: {ex.Message}");
+        }
+    }
+
+    private async Task CleanupGestures()
+    {
+        try
+        {
+            if (toastElement.Context != null)
+            {
+                await JS.InvokeVoidAsync("escalationToastGestures.removeSwipeGestures", toastElement);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cleaning up toast gestures: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSwipeDismiss()
+    {
+        await DismissToast();
+    }
+
+    private async Task StartToastAnimation()
+    {
+        _isAnimating = false;
+        StateHasChanged();
+        
+        // Small delay to ensure DOM is ready
+        await Task.Delay(50);
+        
+        _isAnimating = true;
+        StateHasChanged();
+    }
+
+    private async Task StopToastAnimation()
+    {
+        _isAnimating = false;
+        StateHasChanged();
+        
+        // Wait for animation to complete
+        await Task.Delay(300);
+    }
+
+    private void StartAutoDismissTimer()
+    {
+        if (_autoDismissTimer != null)
+        {
+            _autoDismissTimer.Dispose();
+        }
+
+        if (AutoDismissTimeoutMs > 0)
+        {
+            _autoDismissTimer = new Timer(async _ =>
+            {
+                if (!_isDisposed && IsVisible)
+                {
+                    await InvokeAsync(DismissToast);
+                }
+            }, null, TimeSpan.FromMilliseconds(AutoDismissTimeoutMs), Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void StopAutoDismissTimer()
+    {
+        _autoDismissTimer?.Dispose();
+        _autoDismissTimer = null;
+    }
+
+    private async Task AcceptEscalation()
+    {
+        if (_processing || EscalationData == null) return;
+
+        try
+        {
+            _processing = true;
+            StopAutoDismissTimer();
+            StateHasChanged();
+
+            var command = new AcceptEscalationCommand { ConversationId = EscalationData.ConversationReference };
+            var result = await Mediator.Send(command);
+
+            if (result?.Succeeded == true)
+            {
+                // Trigger accepted callback
+                if (OnAccepted.HasDelegate)
+                {
+                    await OnAccepted.InvokeAsync(EscalationData.ConversationReference);
+                }
+
+                // Navigate to the conversation page
+                Navigation.NavigateTo($"/agent/conversations/{EscalationData.ConversationReference}");
+                
+                // Hide the toast
+                await DismissToast();
+                
+                Snackbar.Add("Escalation accepted successfully", Severity.Success);
+            }
+            else
+            {
+                var errorMessage = result?.Errors?.Any() == true 
+                    ? string.Join(", ", result.Errors) 
+                    : "Unknown error occurred";
+                Snackbar.Add($"Failed to accept escalation: {errorMessage}", Severity.Error);
+                _processing = false;
+                StartAutoDismissTimer(); // Restart timer on error
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error accepting escalation: {ex.Message}", Severity.Error);
+            _processing = false;
+            StartAutoDismissTimer(); // Restart timer on error
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeclineEscalation()
+    {
+        if (_processing || EscalationData == null) return;
+
+        try
+        {
+            StopAutoDismissTimer();
+
+            // Trigger declined callback
+            if (OnDeclined.HasDelegate)
+            {
+                await OnDeclined.InvokeAsync(EscalationData.ConversationReference);
+            }
+
+            await DismissToast();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error declining escalation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DismissToast()
+    {
+        if (_isDisposed) return;
+
+        try
+        {
+            StopAutoDismissTimer();
+
+            // Trigger dismissed callback
+            if (OnDismissed.HasDelegate && EscalationData != null)
+            {
+                await OnDismissed.InvokeAsync(EscalationData.ConversationReference);
+            }
+
+            await StopToastAnimation();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error dismissing toast: {ex.Message}");
+        }
+    }
+
+    private static string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text ?? string.Empty;
+        
+        return text[..(maxLength - 3)] + "...";
+    }
+
+    private static string FormatTimeAgo(DateTime timestamp)
+    {
+        var elapsed = DateTime.UtcNow - timestamp;
+        if (elapsed.TotalMinutes < 1) return "just now";
+        if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m ago";
+        if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}h ago";
+        return timestamp.ToString("MMM d, HH:mm");
+    }
+
+    public void Dispose()
+    {
+        _isDisposed = true;
+        StopAutoDismissTimer();
+        
+        try
+        {
+            _ = CleanupGestures();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error during gesture cleanup: {ex.Message}");
+        }
+        
+        _dotNetRef?.Dispose();
+    }
+}

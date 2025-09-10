@@ -9,13 +9,16 @@
 @inject SignalRConnectionService SignalRConnectionService
 @implements IAsyncDisposable
 
-<EscalationPopup @ref="_popup" 
-                OnEscalationAccepted="HandleEscalationAccepted"
-                OnEscalationDeclined="HandleEscalationDeclined" 
-                OnEscalationIgnored="HandleEscalationIgnored" />
+<!-- Replace modal popup with toast container -->
+<EscalationToastContainer @ref="_toastContainer" 
+                          MaxToastCount="5"
+                          AutoDismissTimeoutMs="30000"
+                          OnEscalationAccepted="HandleEscalationAccepted"
+                          OnEscalationDeclined="HandleEscalationDeclined" 
+                          OnEscalationDismissed="HandleEscalationIgnored" />
 
 @code {
-    private EscalationPopup? _popup;
+    private EscalationToastContainer? _toastContainer;
     private HubConnection? _hubConnection;
     private IDisposable? _receiveEscalationPopupHandler;
     private IDisposable? _dismissEscalationPopupHandler;
@@ -95,22 +98,22 @@
             Logger.LogInformation("🔔 RECEIVED ESCALATION POPUP! Conversation {ConversationId}, Customer: {CustomerName}, Reason: {Reason}", 
                 escalationData.ConversationReference, escalationData.CustomerName, escalationData.EscalationReason);
             
-            if (_popup != null)
+            if (_toastContainer != null)
             {
                 await InvokeAsync(async () =>
                 {
-                    await _popup.ShowEscalation(escalationData);
-                    Logger.LogInformation("✅ Escalation popup displayed successfully for conversation {ConversationId}", escalationData.ConversationReference);
+                    await _toastContainer.ShowToast(escalationData);
+                    Logger.LogInformation("✅ Escalation toast displayed successfully for conversation {ConversationId}", escalationData.ConversationReference);
                 });
             }
             else
             {
-                Logger.LogError("❌ EscalationPopup component reference is null - cannot display popup!");
+                Logger.LogError("❌ EscalationToastContainer component reference is null - cannot display toast!");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "💥 Error showing escalation popup for conversation {ConversationId}", escalationData.ConversationReference);
+            Logger.LogError(ex, "💥 Error showing escalation toast for conversation {ConversationId}", escalationData.ConversationReference);
         }
     }
 
@@ -118,20 +121,19 @@
     {
         try
         {
-            Logger.LogInformation("Dismissing escalation popup for conversation {ConversationId}", conversationId);
+            Logger.LogInformation("Dismissing escalation toast for conversation {ConversationId}", conversationId);
             
-            if (_popup != null)
+            if (_toastContainer != null)
             {
-                await InvokeAsync(() =>
+                await InvokeAsync(async () =>
                 {
-                    _popup.HidePopup();
-                    return Task.CompletedTask;
+                    await _toastContainer.DismissToast(conversationId);
                 });
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error dismissing escalation popup for conversation {ConversationId}", conversationId);
+            Logger.LogError(ex, "Error dismissing escalation toast for conversation {ConversationId}", conversationId);
         }
     }
 
