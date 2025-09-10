@@ -6,32 +6,39 @@ using System.Threading.Tasks;
 using CleanArchitecture.Blazor.Server.UI.Hubs;
 using System.Net;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CleanArchitecture.Blazor.Server.UI.Services.SignalR
 {
     public class SignalRConnectionService : IAsyncDisposable
     {
-        private readonly NavigationManager _navigationManager;
+        private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<SignalRConnectionService> _logger;
-        private readonly IHttpContextAccessor _httpContextAccessor;
         private HubConnection? _hubConnection;
         private Task? _connectionTask;
         private readonly object _lock = new object();
+        private volatile bool _isDisposed = false;
 
-        public SignalRConnectionService(NavigationManager navigationManager, ILogger<SignalRConnectionService> logger, IHttpContextAccessor httpContextAccessor)
+        public SignalRConnectionService(IServiceProvider serviceProvider, ILogger<SignalRConnectionService> logger)
         {
-            _navigationManager = navigationManager;
+            _serviceProvider = serviceProvider;
             _logger = logger;
-            _httpContextAccessor = httpContextAccessor;
         }
 
         public HubConnection? HubConnection => _hubConnection;
 
+        public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected && !_isDisposed;
+
         public Task EnsureConnectedAsync()
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException(nameof(SignalRConnectionService));
+            }
+
             lock (_lock)
             {
-                if (_connectionTask == null)
+                if (_connectionTask == null || _connectionTask.IsFaulted)
                 {
                     _connectionTask = InitializeSignalRConnection();
                 }
@@ -41,25 +48,48 @@ namespace CleanArchitecture.Blazor.Server.UI.Services.SignalR
 
         private async Task InitializeSignalRConnection()
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException(nameof(SignalRConnectionService));
+            }
+
             try
             {
-                var hubUrl = _navigationManager.ToAbsoluteUri(ISignalRHub.Url);
+                // Create a scope to access scoped services
+                using var scope = _serviceProvider.CreateScope();
+                var httpContextAccessor = scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>();
+
+                // Build the hub URL manually since NavigationManager might not be initialized
+                var httpContext = httpContextAccessor.HttpContext;
+                if (httpContext == null)
+                {
+                    throw new InvalidOperationException("HttpContext is not available");
+                }
+
+                var request = httpContext.Request;
+                var scheme = request.Scheme;
+                var host = request.Host;
+                var hubUrl = new Uri($"{scheme}://{host}{ISignalRHub.Url}");
+                
                 _logger.LogInformation("SignalR: Initializing connection to {HubUrl}", hubUrl);
 
                 // Configure cookies for authentication
                 var uri = new UriBuilder(hubUrl);
                 var container = new CookieContainer();
-                if (_httpContextAccessor.HttpContext != null)
+                foreach (var c in httpContext.Request.Cookies)
                 {
-                    foreach (var c in _httpContextAccessor.HttpContext.Request.Cookies)
+                    var sanitizedValue = Uri.EscapeDataString(c.Value);
+                    container.Add(new Cookie(c.Key, sanitizedValue)
                     {
-                        var sanitizedValue = Uri.EscapeDataString(c.Value);
-                        container.Add(new Cookie(c.Key, sanitizedValue)
-                        {
-                            Domain = uri.Host,
-                            Path = "/"
-                        });
-                    }
+                        Domain = uri.Host,
+                        Path = "/"
+                    });
+                }
+
+                // Dispose existing connection if any
+                if (_hubConnection != null)
+                {
+                    await _hubConnection.DisposeAsync();
                 }
 
                 _hubConnection = new HubConnectionBuilder()
@@ -102,7 +132,6 @@ namespace CleanArchitecture.Blazor.Server.UI.Services.SignalR
                 catch (InvalidOperationException ex)
                 {
                     _logger.LogError(ex, "An invalid operation occurred while starting the SignalR connection. This can happen if negotiation fails.");
-                    // Attempt to get more details if possible, though negotiation responses are not always easy to capture here.
                     throw;
                 }
 
@@ -119,11 +148,47 @@ namespace CleanArchitecture.Blazor.Server.UI.Services.SignalR
             }
         }
 
+        public async Task<bool> TryInvokeAsync(string methodName, params object[] args)
+        {
+            if (_isDisposed || _hubConnection == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (_hubConnection.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.SendAsync(methodName, args);
+                    return true;
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogWarning("Attempted to invoke {MethodName} on disposed SignalR connection", methodName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error invoking {MethodName} on SignalR connection", methodName);
+            }
+
+            return false;
+        }
+
         public async ValueTask DisposeAsync()
         {
+            _isDisposed = true;
+            
             if (_hubConnection is not null)
             {
-                await _hubConnection.DisposeAsync();
+                try
+                {
+                    await _hubConnection.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error disposing SignalR connection");
+                }
             }
         }
     }

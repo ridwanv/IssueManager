@@ -8,6 +8,7 @@
 @using CleanArchitecture.Blazor.Server.UI.Components.Issues
 @using CleanArchitecture.Blazor.Server.UI.Components.UtcToLocalTime
 @using CleanArchitecture.Blazor.Server.UI.Hubs
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
 @using CleanArchitecture.Blazor.Server.UI.Services.UserPreferences
 @using CleanArchitecture.Blazor.Domain.Enums
 @using Microsoft.AspNetCore.SignalR.Client
@@ -20,6 +21,8 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject IUserPreferencesService UserPreferencesService
+@inject SignalRConnectionService SignalRService
+@inject ILogger<Index> Logger
 @implements IAsyncDisposable
 
 @attribute [Authorize(Policy = Permissions.Issues.View)]
@@ -47,6 +50,14 @@
                     <MudEnumSelect Style="min-width:120px" TEnum="IssueListView" ValueChanged="OnListViewChanged" Value="_query.ListView" Dense="true" Label="@L["List View"]">
                     </MudEnumSelect>
                 </MudStack>
+                <!-- Connection Status Indicator -->
+                <MudChip T="string" Size="Size.Small" 
+                        Color="@_connectionColor" 
+                        Variant="Variant.Text"
+                        Icon="@_connectionIcon"
+                        Class="connection-status ml-2">
+                    @_connectionStatus
+                </MudChip>
             </MudStack>
             
             <MudStack Spacing="0" AlignItems="AlignItems.End">
@@ -176,6 +187,12 @@
     private bool _loading;
     private HubConnection? _hubConnection;
     
+    // SignalR connection status
+    private string _connectionStatus = "Connecting...";
+    private string _connectionIcon = Icons.Material.Outlined.CloudOff;
+    private Color _connectionColor = Color.Warning;
+    private bool _isInitialized = false;
+    
     [CascadingParameter]
     private UserProfile? UserProfile { get; set; }
 
@@ -189,6 +206,121 @@
         _accessRights = await PermissionService.GetAccessRightsAsync<IssuesAccessRights>();
         await LoadUserPreferences();
         await InitializeSignalRConnection();
+    }
+
+    private async Task InitializeSignalRConnection()
+    {
+        try
+        {
+            await SignalRService.EnsureConnectedAsync();
+            _hubConnection = SignalRService.HubConnection;
+            UpdateConnectionStatus();
+            
+            if (_hubConnection != null)
+            {
+                // Subscribe to issue-related events
+                _hubConnection.On<IssueListDto>("IssueCreated", OnIssueCreated);
+                _hubConnection.On<IssueListDto>("IssueUpdated", OnIssueUpdated);
+                _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnIssueStatusChanged);
+                _hubConnection.On("IssueListUpdated", OnIssueListUpdated);
+                
+                // Handle connection state changes
+                _hubConnection.Reconnecting += (error) =>
+                {
+                    InvokeAsync(() =>
+                    {
+                        UpdateConnectionStatus();
+                        StateHasChanged();
+                    });
+                    return Task.CompletedTask;
+                };
+                
+                _hubConnection.Reconnected += (connectionId) =>
+                {
+                    InvokeAsync(() =>
+                    {
+                        UpdateConnectionStatus();
+                        StateHasChanged();
+                    });
+                    return Task.CompletedTask;
+                };
+                
+                _hubConnection.Closed += (error) =>
+                {
+                    InvokeAsync(() =>
+                    {
+                        UpdateConnectionStatus();
+                        StateHasChanged();
+                    });
+                    return Task.CompletedTask;
+                };
+            }
+            
+            _isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize SignalR connection");
+            UpdateConnectionStatus();
+        }
+    }
+
+    private void UpdateConnectionStatus()
+    {
+        var state = _hubConnection?.State ?? HubConnectionState.Disconnected;
+        _connectionStatus = state switch
+        {
+            HubConnectionState.Connected => "Connected",
+            HubConnectionState.Connecting => "Connecting...",
+            HubConnectionState.Disconnected => "Disconnected",
+            HubConnectionState.Reconnecting => "Reconnecting...",
+            _ => "Unknown"
+        };
+
+        (_connectionIcon, _connectionColor) = state switch
+        {
+            HubConnectionState.Connected => (Icons.Material.Filled.Cloud, Color.Success),
+            HubConnectionState.Connecting => (Icons.Material.Outlined.CloudSync, Color.Warning),
+            HubConnectionState.Disconnected => (Icons.Material.Outlined.CloudOff, Color.Error),
+            HubConnectionState.Reconnecting => (Icons.Material.Outlined.CloudSync, Color.Warning),
+            _ => (Icons.Material.Outlined.CloudOff, Color.Default)
+        };
+    }
+
+    private async Task OnIssueCreated(IssueListDto issue)
+    {
+        await InvokeAsync(async () =>
+        {
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnIssueUpdated(IssueListDto issue)
+    {
+        await InvokeAsync(async () =>
+        {
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnIssueStatusChanged(Guid issueId, IssueStatus newStatus)
+    {
+        await InvokeAsync(async () =>
+        {
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnIssueListUpdated()
+    {
+        await InvokeAsync(async () =>
+        {
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
     }
 
     private async Task LoadUserPreferences()
@@ -258,51 +390,6 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Failed to save preferences: {ex.Message}", Severity.Warning);
-        }
-    }
-
-    private async Task InitializeSignalRConnection()
-    {
-        try
-        {
-            var hubUrl = Navigation.ToAbsoluteUri(ISignalRHub.Url);
-            _hubConnection = new HubConnectionBuilder()
-                .WithUrl(hubUrl)
-                .WithAutomaticReconnect()
-                .Build();
-
-            // Register event handlers
-            _hubConnection.On<IssueListDto>("IssueCreated", OnIssueCreated);
-            _hubConnection.On<IssueListDto>("IssueUpdated", OnIssueUpdated);
-            _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnIssueStatusChanged);
-            _hubConnection.On("IssueListUpdated", OnIssueListUpdated);
-
-            // Handle connection state changes
-            _hubConnection.Reconnecting += (error) =>
-            {
-                InvokeAsync(() =>
-                {
-                    Snackbar.Add("Connection lost. Reconnecting...", Severity.Warning);
-                    return Task.CompletedTask;
-                });
-                return Task.CompletedTask;
-            };
-
-            _hubConnection.Reconnected += (connectionId) =>
-            {
-                InvokeAsync(() =>
-                {
-                    Snackbar.Add("Connection restored.", Severity.Success);
-                    return Task.CompletedTask;
-                });
-                return Task.CompletedTask;
-            };
-
-            await _hubConnection.StartAsync();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"SignalR connection failed: {ex.Message}", Severity.Error);
         }
     }
 
@@ -409,39 +496,39 @@
         };
     }
 
-    // SignalR event handlers
-    private async Task OnIssueCreated(IssueListDto issue)
-    {
-        Snackbar.Add($"New issue created: {issue.ReferenceNumber}", Severity.Info);
-        await _dataGrid.ReloadServerData();
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task OnIssueUpdated(IssueListDto issue)
-    {
-        Snackbar.Add($"Issue updated: {issue.ReferenceNumber}", Severity.Info);
-        await _dataGrid.ReloadServerData();
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task OnIssueStatusChanged(Guid issueId, IssueStatus newStatus)
-    {
-        Snackbar.Add($"Issue status changed to {newStatus}", Severity.Info);
-        await _dataGrid.ReloadServerData();
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task OnIssueListUpdated()
-    {
-        await _dataGrid.ReloadServerData();
-        await InvokeAsync(StateHasChanged);
-    }
-
     public async ValueTask DisposeAsync()
     {
+        if (_isInitialized && _hubConnection != null)
+        {
+            // No need to unsubscribe from events - they're disposed with the connection
+        }
+        
         if (_hubConnection is not null)
         {
             await _hubConnection.DisposeAsync();
         }
     }
 }
+
+<style>
+    .connection-status {
+        animation: pulse 2s infinite;
+        transition: all 0.3s ease;
+    }
+    
+    .connection-status.connected {
+        animation: none;
+    }
+    
+    @@keyframes pulse {
+        0% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.5;
+        }
+        100% {
+            opacity: 1;
+        }
+    }
+</style>

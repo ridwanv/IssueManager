@@ -6,6 +6,7 @@
 @using CleanArchitecture.Blazor.Server.UI.Components.Issues
 @using CleanArchitecture.Blazor.Server.UI.Components.UtcToLocalTime
 @using CleanArchitecture.Blazor.Server.UI.Hubs
+@using CleanArchitecture.Blazor.Server.UI.Services.SignalR
 @using CleanArchitecture.Blazor.Domain.Enums
 @using Microsoft.AspNetCore.SignalR.Client
 
@@ -16,6 +17,7 @@
 @inject IPermissionService PermissionService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject SignalRConnectionService SignalRService
 @implements IAsyncDisposable
 
 @attribute [Authorize(Policy = Permissions.Issues.View)]
@@ -33,6 +35,14 @@
                         Issues assigned to you
                     </MudText>
                 </MudStack>
+                <!-- Connection Status Indicator -->
+                <MudChip T="string" Size="Size.Small" 
+                        Color="@_connectionColor" 
+                        Variant="Variant.Text"
+                        Icon="@_connectionIcon"
+                        Class="connection-status">
+                    @_connectionStatus
+                </MudChip>
             </MudStack>
             
             <MudStack Row Spacing="2">
@@ -159,6 +169,45 @@
     </MudStack>
 </MudContainer>
 
+<style>
+    .connection-status {
+        margin-left: 8px;
+    }
+    
+    .connection-status .mud-chip-icon {
+        animation: spin 2s linear infinite;
+    }
+    
+    .connection-status.mud-chip-color-success .mud-chip-icon {
+        animation: none;
+    }
+    
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    /* Enhanced card styling */
+    .mud-card {
+        border-radius: 12px;
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+    
+    .mud-card-header {
+        border-bottom: 1px solid var(--mud-palette-lines-default);
+    }
+    
+    /* Data grid styling */
+    .mud-table-root {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    
+    .mud-table-container {
+        border-radius: 12px;
+    }
+</style>
+
 @code {
     public string? Title { get; private set; }
     private int _defaultPageSize = 15;
@@ -166,6 +215,17 @@
     private MudDataGrid<IssueListDto> _dataGrid = default!;
     private bool _loading;
     private HubConnection? _hubConnection;
+    
+    // Real-time connection state
+    private string _connectionStatus = "Connecting...";
+    private Color _connectionColor = Color.Warning;
+    private string _connectionIcon = Icons.Material.Filled.Sync;
+    
+    // SignalR handler disposables to avoid calling Remove(method) which clears other components' handlers
+    private IDisposable? _issueCreatedHandler;
+    private IDisposable? _issueUpdatedHandler;
+    private IDisposable? _issueStatusChangedHandler;
+    private IDisposable? _issueListUpdatedHandler;
     
     [CascadingParameter]
     private UserProfile? UserProfile { get; set; }
@@ -177,30 +237,124 @@
     {
         Title = L["My Issues"];
         _accessRights = await PermissionService.GetAccessRightsAsync<IssuesAccessRights>();
-        await InitializeSignalRConnection();
+        await InitializeSignalR();
     }
 
-    private async Task InitializeSignalRConnection()
+    private async Task InitializeSignalR()
     {
         try
         {
-            var hubUrl = Navigation.ToAbsoluteUri(ISignalRHub.Url);
-            _hubConnection = new HubConnectionBuilder()
-                .WithUrl(hubUrl)
-                .WithAutomaticReconnect()
-                .Build();
+            // Use the SignalRConnectionService to get the connection
+            await SignalRService.EnsureConnectedAsync();
+            _hubConnection = SignalRService.HubConnection;
 
-            // Register event handlers for assigned issues only
-            _hubConnection.On<IssueListDto>("IssueAssignedToMe", OnIssueAssignedToMe);
-            _hubConnection.On<IssueListDto>("IssueUpdated", OnMyIssueUpdated);
-            _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnMyIssueStatusChanged);
+            if (_hubConnection != null)
+            {
+                // Connection state handlers
+                _hubConnection.Reconnecting += OnReconnecting;
+                _hubConnection.Reconnected += OnReconnected;
+                _hubConnection.Closed += OnConnectionClosed;
 
-            await _hubConnection.StartAsync();
+                // Subscribe to real-time issue updates (store disposables so only this component unsubscribes its own handlers)
+                _issueCreatedHandler = _hubConnection.On<IssueListDto>("IssueCreated", OnIssueCreated);
+                _issueUpdatedHandler = _hubConnection.On<IssueListDto>("IssueUpdated", OnIssueUpdated);
+                _issueStatusChangedHandler = _hubConnection.On<Guid, IssueStatus>("IssueStatusChanged", OnIssueStatusChanged);
+                _issueListUpdatedHandler = _hubConnection.On("IssueListUpdated", OnIssueListUpdated);
+
+                UpdateConnectionStatus("connected");
+                Console.WriteLine($"[MyIssues] Successfully connected to SignalR and subscribed to issue events");
+            }
+            else
+            {
+                UpdateConnectionStatus("error");
+            }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"SignalR connection failed: {ex.Message}", Severity.Error);
+            Console.WriteLine($"SignalR connection error: {ex.Message}");
+            UpdateConnectionStatus("error");
         }
+    }
+
+    // Enhanced real-time event handlers
+    private Task OnReconnecting(Exception? exception)
+    {
+        UpdateConnectionStatus("reconnecting");
+        return Task.CompletedTask;
+    }
+
+    private Task OnReconnected(string? connectionId)
+    {
+        UpdateConnectionStatus("connected");
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private Task OnConnectionClosed(Exception? exception)
+    {
+        UpdateConnectionStatus("disconnected");
+        return Task.CompletedTask;
+    }
+
+    private async Task OnIssueCreated(IssueListDto issue)
+    {
+        Console.WriteLine($"[MyIssues] Issue created: {issue.ReferenceNumber}");
+        
+        await InvokeAsync(async () =>
+        {
+            // Since we're filtering by assigned user in the query, any new issue 
+            // creation that affects our list will require a reload to check assignment
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnIssueUpdated(IssueListDto issue)
+    {
+        Console.WriteLine($"[MyIssues] Issue updated: {issue.ReferenceNumber}");
+        
+        await InvokeAsync(async () =>
+        {
+            // Reload the grid to get current assignment state since IssueListDto 
+            // doesn't include assignment info
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnIssueStatusChanged(Guid issueId, IssueStatus newStatus)
+    {
+        Console.WriteLine($"[MyIssues] Issue status changed: {issueId} -> {newStatus}");
+        
+        await InvokeAsync(async () =>
+        {
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnIssueListUpdated()
+    {
+        Console.WriteLine($"[MyIssues] Issue list updated - refreshing data");
+        
+        await InvokeAsync(async () =>
+        {
+            await _dataGrid.ReloadServerData();
+            StateHasChanged();
+        });
+    }
+
+    private void UpdateConnectionStatus(string status)
+    {
+        (_connectionStatus, _connectionColor, _connectionIcon) = status switch
+        {
+            "connected" => ("Connected", Color.Success, Icons.Material.Filled.CheckCircle),
+            "reconnecting" => ("Reconnecting...", Color.Warning, Icons.Material.Filled.Sync),
+            "disconnected" => ("Disconnected", Color.Error, Icons.Material.Filled.Error),
+            "error" => ("Connection Error", Color.Error, Icons.Material.Filled.Error),
+            _ => ("Unknown", Color.Default, Icons.Material.Filled.Help)
+        };
+        
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task<GridData<IssueListDto>> ServerReload(GridState<IssueListDto> state)
@@ -284,9 +438,27 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (_hubConnection is not null)
+        try
         {
-            await _hubConnection.DisposeAsync();
+            if (_hubConnection != null)
+            {
+                // Dispose only handlers registered by this component (won't affect other components)
+                _issueCreatedHandler?.Dispose();
+                _issueUpdatedHandler?.Dispose();
+                _issueStatusChangedHandler?.Dispose();
+                _issueListUpdatedHandler?.Dispose();
+                
+                // Remove connection state handlers
+                _hubConnection.Reconnecting -= OnReconnecting;
+                _hubConnection.Reconnected -= OnReconnected;
+                _hubConnection.Closed -= OnConnectionClosed;
+            }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error disposing SignalR handlers: {ex.Message}");
+        }
+        
+        GC.SuppressFinalize(this);
     }
 }

@@ -238,7 +238,7 @@
             await SignalRService.EnsureConnectedAsync();
             _hubConnection = SignalRService.HubConnection;
 
-            if (_hubConnection != null)
+            if (_hubConnection != null && SignalRService.IsConnected)
             {
                 Console.WriteLine("[NotificationIndicator] Setting up SignalR event handlers...");
 
@@ -587,11 +587,15 @@
             Console.WriteLine("[NotificationIndicator] Attempting to reconnect SignalR...");
             await SignalRService.EnsureConnectedAsync();
             var connection = SignalRService.HubConnection;
-            if (connection?.State == HubConnectionState.Connected)
+            if (connection?.State == HubConnectionState.Connected && SignalRService.IsConnected)
             {
                 Console.WriteLine("[NotificationIndicator] Reconnected successfully");
                 // Event handlers are already set up in InitializeSignalR
             }
+        }
+        catch (ObjectDisposedException ex)
+        {
+            Console.WriteLine($"[NotificationIndicator] Cannot reconnect - connection disposed: {ex.Message}");
         }
         catch (Exception ex)
         {
@@ -639,11 +643,18 @@
     {
         try
         {
-            if (_hubConnection?.State == HubConnectionState.Connected && !string.IsNullOrWhiteSpace(conversationId) && !_joinedGroups.Contains(conversationId))
+            if (SignalRService.IsConnected && !string.IsNullOrWhiteSpace(conversationId) && !_joinedGroups.Contains(conversationId))
             {
-                await _hubConnection.InvokeAsync("JoinConversationGroup", conversationId);
-                _joinedGroups.Add(conversationId);
-                Console.WriteLine($"[NotificationIndicator] Joined conversation group {conversationId}");
+                var success = await SignalRService.TryInvokeAsync("JoinConversationGroup", conversationId);
+                if (success)
+                {
+                    _joinedGroups.Add(conversationId);
+                    Console.WriteLine($"[NotificationIndicator] Joined conversation group {conversationId}");
+                }
+                else
+                {
+                    Console.WriteLine($"[NotificationIndicator] Failed to join conversation group {conversationId} - connection not available");
+                }
             }
         }
         catch (Exception ex)
@@ -668,16 +679,27 @@
     {
         try
         {
-            if (_hubConnection?.State == HubConnectionState.Connected && _joinedGroups.Contains(conversationId))
+            if (SignalRService.IsConnected && _joinedGroups.Contains(conversationId))
             {
-                await _hubConnection.InvokeAsync("LeaveConversationGroup", conversationId);
-                _joinedGroups.Remove(conversationId);
-                Console.WriteLine($"[NotificationIndicator] Left conversation group {conversationId}");
+                var success = await SignalRService.TryInvokeAsync("LeaveConversationGroup", conversationId);
+                if (success)
+                {
+                    _joinedGroups.Remove(conversationId);
+                    Console.WriteLine($"[NotificationIndicator] Left conversation group {conversationId}");
+                }
+                else
+                {
+                    // Remove from local tracking even if SignalR call failed
+                    _joinedGroups.Remove(conversationId);
+                    Console.WriteLine($"[NotificationIndicator] Failed to leave conversation group {conversationId} via SignalR, but removed from local tracking");
+                }
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[NotificationIndicator] Failed to leave conversation group {conversationId}: {ex.Message}");
+            // Remove from local tracking even if there was an error
+            _joinedGroups.Remove(conversationId);
         }
     }
 

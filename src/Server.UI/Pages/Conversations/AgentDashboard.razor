@@ -309,7 +309,7 @@
             await SignalRConnectionService.EnsureConnectedAsync();
             _hubConnection = SignalRConnectionService.HubConnection;
 
-            if (_hubConnection is null)
+            if (_hubConnection is null || !SignalRConnectionService.IsConnected)
             {
                 _connectionStatus = "Failed: Connection service did not provide a connection.";
                 Snackbar.Add("Error connecting to real-time updates.", Severity.Error);
@@ -345,7 +345,12 @@
                     StateHasChanged();
                     
                     // Rejoin the agent group after reconnection
-                    await _hubConnection.InvokeAsync("JoinAgentGroup");
+                    var success = await SignalRConnectionService.TryInvokeAsync("JoinAgentGroup");
+                    if (!success)
+                    {
+                        _connectionStatus = "Failed to rejoin agent group";
+                        StartPollingMode();
+                    }
                 });
                 return Task.CompletedTask;
             };
@@ -354,7 +359,16 @@
             {
                 InvokeAsync(() =>
                 {
-                    _connectionStatus = error == null ? "Disconnected" : $"Error: {error.Message}";
+                    var errorMessage = error?.Message ?? "Connection closed";
+                    _connectionStatus = $"Disconnected: {errorMessage}";
+                    
+                    // Check if it's a disposal error and switch to polling
+                    if (error is ObjectDisposedException || errorMessage.Contains("disposed"))
+                    {
+                        Snackbar.Add($"Real-time updates unavailable: {errorMessage}. Using polling mode.", Severity.Info);
+                        StartPollingMode();
+                    }
+                    
                     StateHasChanged();
                 });
                 return Task.CompletedTask;
@@ -366,12 +380,21 @@
             if (_hubConnection.State == HubConnectionState.Connected)
             {
                  // Join the agent group to receive notifications
-                await _hubConnection.InvokeAsync("JoinAgentGroup");
-                Console.WriteLine("SignalR: Joined agent group");
-                _connectionStatus = "Connected";
-                // Stop the timer-based refresh since we now have real-time updates
-                _refreshTimer?.Dispose();
-                _refreshTimer = null;
+                var success = await SignalRConnectionService.TryInvokeAsync("JoinAgentGroup");
+                if (success)
+                {
+                    Console.WriteLine("SignalR: Joined agent group");
+                    _connectionStatus = "Connected";
+                    // Stop the timer-based refresh since we now have real-time updates
+                    _refreshTimer?.Dispose();
+                    _refreshTimer = null;
+                }
+                else
+                {
+                    _connectionStatus = "Failed to join agent group";
+                    Console.WriteLine("SignalR: Failed to join agent group");
+                    StartPollingMode();
+                }
             }
             else
             {
@@ -379,6 +402,13 @@
                 Console.WriteLine($"SignalR: Connection failed, state is {_hubConnection.State}");
                 StartPollingMode();
             }
+        }
+        catch (ObjectDisposedException ex)
+        {
+            var errorMessage = "Cannot access a disposed object. Object name: 'Microsoft.AspNetCore.SignalR.Client.HubConnection'";
+            _connectionStatus = $"Failed: Connection disposed";
+            Snackbar.Add($"Real-time updates unavailable: {errorMessage}. Using polling mode.", Severity.Info);
+            StartPollingMode();
         }
         catch (Exception ex)
         {
@@ -793,13 +823,20 @@
         {
             try
             {
-                await _hubConnection.InvokeAsync("LeaveAgentGroup");
-                await _hubConnection.DisposeAsync();
+                // Use the safe invoke method to leave the agent group
+                await SignalRConnectionService.TryInvokeAsync("LeaveAgentGroup");
             }
-            catch
+            catch (ObjectDisposedException)
             {
-                // Ignore disposal errors
+                // Connection already disposed, ignore
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error leaving agent group during disposal: {ex.Message}");
             }
         }
+        
+        // Note: We don't dispose the SignalRConnectionService here since it's now a singleton
+        // The service will be disposed when the application shuts down
     }
 }

@@ -174,7 +174,7 @@ public static class DependencyInjection
         });
         services.AddHttpContextAccessor();
         services.AddScoped<HubClient>();
-        services.AddScoped<SignalRConnectionService>();
+        services.AddSingleton<SignalRConnectionService>();
         services
             .AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>()
             .AddScoped<LayoutService>()

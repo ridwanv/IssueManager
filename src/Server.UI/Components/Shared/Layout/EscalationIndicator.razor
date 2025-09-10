@@ -265,10 +265,17 @@
     {
         try
         {
-            if (_hubConnection?.State == HubConnectionState.Connected)
+            if (SignalRService.IsConnected)
             {
-                await _hubConnection.InvokeAsync("JoinAgentGroup");
-                Console.WriteLine("[EscalationIndicator] Joined agent group for escalation notifications");
+                var success = await SignalRService.TryInvokeAsync("JoinAgentGroup");
+                if (success)
+                {
+                    Console.WriteLine("[EscalationIndicator] Joined agent group for escalation notifications");
+                }
+                else
+                {
+                    Console.WriteLine("[EscalationIndicator] Failed to join agent group - connection not available");
+                }
             }
         }
         catch (Exception ex)
@@ -430,9 +437,9 @@
             if (result.Succeeded)
             {
                 // Broadcast acceptance to all agents via SignalR
-                if (_hubConnection?.State == HubConnectionState.Connected)
+                if (SignalRService.IsConnected)
                 {
-                    await _hubConnection.InvokeAsync("BroadcastEscalationAccepted", escalation.ConversationId);
+                    await SignalRService.TryInvokeAsync("BroadcastEscalationAccepted", escalation.ConversationId);
                 }
 
                 // Invoke callback
@@ -465,9 +472,9 @@
             Console.WriteLine($"[EscalationIndicator] Ignoring escalation {escalation.ConversationId}");
 
             // Broadcast ignore to all agents via SignalR
-            if (_hubConnection?.State == HubConnectionState.Connected)
+            if (SignalRService.IsConnected)
             {
-                await _hubConnection.InvokeAsync("BroadcastEscalationIgnored", escalation.ConversationId, _currentUserId);
+                await SignalRService.TryInvokeAsync("BroadcastEscalationIgnored", escalation.ConversationId, _currentUserId);
             }
 
             // Invoke callback

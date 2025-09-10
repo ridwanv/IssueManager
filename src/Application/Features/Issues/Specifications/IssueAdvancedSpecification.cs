@@ -97,6 +97,13 @@ public class IssueAdvancedSpecification : Specification<Issue>
         // List View Filters
         switch (filter.ListView)
         {
+            case IssueListView.MyAssigned:
+                if (filter.CurrentUser is not null)
+                {
+                    Query.Where(q => q.AssignedUserId == filter.CurrentUser.UserId);
+                }
+                break;
+
             case IssueListView.MyReported:
                 if (filter.CurrentUser is not null)
                 {

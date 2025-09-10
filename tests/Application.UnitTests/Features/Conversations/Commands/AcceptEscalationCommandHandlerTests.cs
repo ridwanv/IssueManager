@@ -4,24 +4,26 @@ using CleanArchitecture.Blazor.Application.Common.Interfaces.Identity;
 using CleanArchitecture.Blazor.Domain.Entities;
 using CleanArchitecture.Blazor.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
-using NSubstitute;
+using Moq;
+using System.Threading;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace CleanArchitecture.Blazor.Application.UnitTests.Features.Conversations.Commands;
 
 public class AcceptEscalationCommandHandlerTests
 {
-    private readonly IApplicationDbContextFactory _dbContextFactory;
-    private readonly IUserContextAccessor _userContextAccessor;
-    private readonly IApplicationHubWrapper _hubWrapper;
+    private readonly Mock<IApplicationDbContextFactory> _dbContextFactory;
+    private readonly Mock<IUserContextAccessor> _userContextAccessor;
+    private readonly Mock<IApplicationHubWrapper> _hubWrapper;
     private readonly AcceptEscalationCommandHandler _handler;
 
     public AcceptEscalationCommandHandlerTests()
     {
-        _dbContextFactory = Substitute.For<IApplicationDbContextFactory>();
-        _userContextAccessor = Substitute.For<IUserContextAccessor>();
-        _hubWrapper = Substitute.For<IApplicationHubWrapper>();
-        _handler = new AcceptEscalationCommandHandler(_dbContextFactory, _userContextAccessor, _hubWrapper);
+        _dbContextFactory = new Mock<IApplicationDbContextFactory>();
+        _userContextAccessor = new Mock<IUserContextAccessor>();
+        _hubWrapper = new Mock<IApplicationHubWrapper>();
+        _handler = new AcceptEscalationCommandHandler(_dbContextFactory.Object, _userContextAccessor.Object, _hubWrapper.Object);
     }
 
     [Fact]
@@ -54,7 +56,7 @@ public class AcceptEscalationCommandHandlerTests
     {
         // Arrange
         var request = new AcceptEscalationCommand { ConversationId = "test-conv-123" };
-        _userContextAccessor.Current.Returns((UserContext)null!);
+        _userContextAccessor.Setup(x => x.Current).Returns((UserContext)null!);
 
         // Act
         var result = await _handler.Handle(request, CancellationToken.None);
@@ -69,8 +71,8 @@ public class AcceptEscalationCommandHandlerTests
     {
         // Arrange
         var request = new AcceptEscalationCommand { ConversationId = "test-conv-123" };
-        var userContext = new UserContext { UserId = null };
-        _userContextAccessor.Current.Returns(userContext);
+        var userContext = new UserContext("", "testuser");
+        _userContextAccessor.Setup(x => x.Current).Returns(userContext);
 
         // Act
         var result = await _handler.Handle(request, CancellationToken.None);
