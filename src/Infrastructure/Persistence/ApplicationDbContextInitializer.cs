@@ -354,11 +354,29 @@ public class ApplicationDbContextInitializer
             ProfilePictureDataUrl = "https://s.gravatar.com/avatar/ea753b0b0f357a41491408307ade445e?s=80"
         };
 
-        await _userManager.CreateAsync(adminUser, UserName.DefaultPassword);
-        await _userManager.AddToRoleAsync(adminUser, RoleName.TenantOwner); // Use new role instead of legacy Admin
+        var adminResult = await _userManager.CreateAsync(adminUser, UserName.DefaultPassword);
+        if (adminResult.Succeeded)
+        {
+            await _userManager.AddToRoleAsync(adminUser, RoleName.TenantOwner);
+            _logger.LogInformation("Admin user created successfully");
+        }
+        else
+        {
+            _logger.LogError("Failed to create admin user: {Errors}", string.Join(", ", adminResult.Errors.Select(e => e.Description)));
+            throw new InvalidOperationException($"Failed to create admin user: {string.Join(", ", adminResult.Errors.Select(e => e.Description))}");
+        }
 
-        await _userManager.CreateAsync(demoUser, UserName.DefaultPassword);
-        await _userManager.AddToRoleAsync(demoUser, RoleName.EndUser); // Use new role instead of legacy Basic
+        var demoResult = await _userManager.CreateAsync(demoUser, UserName.DefaultPassword);
+        if (demoResult.Succeeded)
+        {
+            await _userManager.AddToRoleAsync(demoUser, RoleName.EndUser);
+            _logger.LogInformation("Demo user created successfully");
+        }
+        else
+        {
+            _logger.LogError("Failed to create demo user: {Errors}", string.Join(", ", demoResult.Errors.Select(e => e.Description)));
+            throw new InvalidOperationException($"Failed to create demo user: {string.Join(", ", demoResult.Errors.Select(e => e.Description))}");
+        }
     }
 
     private async Task SeedDataAsync()
