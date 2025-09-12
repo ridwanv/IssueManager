@@ -48,6 +48,7 @@ public class ApplicationDbContextInitializer
         {
             await SeedTenantsAsync();
             await SeedRolesAsync();
+            await MigrateUserTypeToRolesAsync(); // Convert existing UserType values to roles
             await SeedUsersAsync();
             await SeedDataAsync();
             _context.ChangeTracker.Clear();
@@ -103,37 +104,218 @@ public class ApplicationDbContextInitializer
 
     private async Task SeedRolesAsync()
     {
-        var adminRoleName = RoleName.Admin;
-        var userRoleName = RoleName.Basic;
-
-        if (await _roleManager.RoleExistsAsync(adminRoleName)) return;
-
         _logger.LogInformation("Seeding roles...");
-        var administratorRole = new ApplicationRole(adminRoleName)
-        {
-            Description = "Admin Group",
-            TenantId = (await _context.Tenants.FirstAsync()).Id
-        };
-        var userRole = new ApplicationRole(userRoleName)
-        {
-            Description = "Basic Group",
-            TenantId = (await _context.Tenants.FirstAsync()).Id
-        };
+        
+        // Create all persona-based roles as global (TenantId = null)
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.PlatformOwner, "Platform super admin with cross-tenant access");
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.TenantOwner, "Tenant administrator with full tenant management");
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.IssueManager, "Manages issues and assigns work within tenant");
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.IssueAssignee, "Works on assigned issues and updates status");
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.ChatAgent, "Handles escalated customer conversations");
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.ChatSupervisor, "Supervises chat agents and handles escalations");
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.EndUser, "Basic user with limited system access");
+        await CreateGlobalRoleIfNotExistsAsync(RoleName.ApiConsumer, "External system integration access");
 
-        await _roleManager.CreateAsync(administratorRole);
-        await _roleManager.CreateAsync(userRole);
+        // Migrate existing tenant-scoped roles to global if needed
+        await MigrateLegacyRolesToGlobalAsync();
 
+        // Assign permissions to roles
+        await AssignPermissionsToRolesAsync();
+    }
+
+    private async Task CreateGlobalRoleIfNotExistsAsync(string roleName, string description)
+    {
+        var existingRole = await _roleManager.Roles.FirstOrDefaultAsync(r => r.Name == roleName && r.TenantId == null);
+        if (existingRole == null)
+        {
+            var role = new ApplicationRole(roleName)
+            {
+                Description = description,
+                TenantId = null // Global role
+            };
+            await _roleManager.CreateAsync(role);
+            _logger.LogInformation("Created global role: {RoleName}", roleName);
+        }
+    }
+
+    private async Task MigrateLegacyRolesToGlobalAsync()
+    {
+        // Migrate existing tenant-scoped legacy roles to global
+        var legacyRoles = new[] { RoleName.Admin, RoleName.Basic, RoleName.Users };
+        
+        foreach (var roleName in legacyRoles)
+        {
+            var globalRole = await _roleManager.Roles.FirstOrDefaultAsync(r => r.Name == roleName && r.TenantId == null);
+            if (globalRole == null)
+            {
+                var description = roleName switch
+                {
+                    RoleName.Admin => "Legacy admin role - use TenantOwner instead",
+                    RoleName.Basic => "Legacy basic role - use EndUser instead", 
+                    RoleName.Users => "Legacy users role - use persona-specific roles instead",
+                    _ => "Legacy role"
+                };
+                
+                await CreateGlobalRoleIfNotExistsAsync(roleName, description);
+            }
+        }
+    }
+
+    private async Task AssignPermissionsToRolesAsync()
+    {
         var permissions = GetAllPermissions();
+        
+        // Assign full permissions to PlatformOwner (super admin across all tenants)
+        await AssignAllPermissionsToRoleAsync(RoleName.PlatformOwner, permissions);
+        
+        // Assign tenant admin permissions to TenantOwner
+        await AssignPermissionsToRoleAsync(RoleName.TenantOwner, permissions.Where(p => 
+            p.StartsWith("Permissions.Tenant.") ||
+            p.StartsWith("Permissions.Users.") ||
+            p.StartsWith("Permissions.Roles.") ||
+            p.StartsWith("Permissions.Issues.") ||
+            p.StartsWith("Permissions.Conversations.") ||
+            p.StartsWith("Permissions.Contacts.") ||
+            p.StartsWith("Permissions.Products.") ||
+            p.StartsWith("Permissions.Documents.") ||
+            p.StartsWith("Permissions.AuditTrails.") ||
+            p.StartsWith("Permissions.Logs.") ||
+            p.StartsWith("Permissions.Dashboards.")));
+        
+        // Assign issue management permissions
+        await AssignPermissionsToRoleAsync(RoleName.IssueManager, permissions.Where(p => 
+            p.StartsWith("Permissions.IssueManager.") ||
+            p.StartsWith("Permissions.Issues.") ||
+            p.StartsWith("Permissions.Contacts.") ||
+            p.StartsWith("Permissions.Products.View") ||
+            p.StartsWith("Permissions.Dashboards.")));
+            
+        // Assign issue assignee permissions
+        await AssignPermissionsToRoleAsync(RoleName.IssueAssignee, permissions.Where(p => 
+            p.StartsWith("Permissions.IssueAssignee.") ||
+            p.StartsWith("Permissions.Issues.View") ||
+            p.StartsWith("Permissions.Issues.Edit") ||
+            p.StartsWith("Permissions.Contacts.View") ||
+            p.StartsWith("Permissions.Products.View")));
+            
+        // Assign chat agent permissions
+        await AssignPermissionsToRoleAsync(RoleName.ChatAgent, permissions.Where(p => 
+            p.StartsWith("Permissions.ChatAgent.") ||
+            p.StartsWith("Permissions.Conversations.View") ||
+            p.StartsWith("Permissions.Conversations.JoinAsAgent") ||
+            p.StartsWith("Permissions.Conversations.Transfer") ||
+            p.StartsWith("Permissions.Issues.View") ||
+            p.StartsWith("Permissions.Issues.Create") ||
+            p.StartsWith("Permissions.Contacts.")));
+            
+        // Assign chat supervisor permissions
+        await AssignPermissionsToRoleAsync(RoleName.ChatSupervisor, permissions.Where(p => 
+            p.StartsWith("Permissions.ChatSupervisor.") ||
+            p.StartsWith("Permissions.ChatAgent.") ||
+            p.StartsWith("Permissions.Conversations.") ||
+            p.StartsWith("Permissions.Issues.") ||
+            p.StartsWith("Permissions.Contacts.") ||
+            p.StartsWith("Permissions.Agents.")));
+            
+        // Assign end user permissions
+        await AssignPermissionsToRoleAsync(RoleName.EndUser, permissions.Where(p => 
+            p.StartsWith("Permissions.EndUser.") ||
+            p.StartsWith("Permissions.Issues.View") ||
+            p.StartsWith("Permissions.Products.View") ||
+            p.StartsWith("Permissions.Dashboards.View")));
+            
+        // Assign API consumer permissions
+        await AssignPermissionsToRoleAsync(RoleName.ApiConsumer, permissions.Where(p => 
+            p.StartsWith("Permissions.ApiConsumer.") ||
+            p.StartsWith("Permissions.Issues.") ||
+            p.StartsWith("Permissions.Conversations.") ||
+            p.StartsWith("Permissions.Products.View") ||
+            p.StartsWith("Permissions.Contacts.")));
+            
+        // Legacy role compatibility - maintain existing behavior
+        await AssignAllPermissionsToRoleAsync(RoleName.Admin, permissions);
+        await AssignPermissionsToRoleAsync(RoleName.Basic, permissions.Where(p => 
+            p.StartsWith("Permissions.Products") || 
+            p.StartsWith("Permissions.Conversations") ||
+            p.StartsWith("Permissions.EndUser.")));
+        await AssignPermissionsToRoleAsync(RoleName.Users, permissions.Where(p => 
+            p.StartsWith("Permissions.Issues.View") ||
+            p.StartsWith("Permissions.Products.View") ||
+            p.StartsWith("Permissions.Conversations.View")));
+    }
 
+    private async Task AssignAllPermissionsToRoleAsync(string roleName, IEnumerable<string> permissions)
+    {
+        var role = await _roleManager.Roles.FirstAsync(r => r.Name == roleName && r.TenantId == null);
+        
         foreach (var permission in permissions)
         {
-            var claim = new Claim(ApplicationClaimTypes.Permission, permission);
-            await _roleManager.AddClaimAsync(administratorRole, claim);
-
-            if (permission.StartsWith("Permissions.Products") || 
-                permission.StartsWith("Permissions.Conversations"))
+            var existingClaim = await _roleManager.GetClaimsAsync(role);
+            if (!existingClaim.Any(c => c.Type == ApplicationClaimTypes.Permission && c.Value == permission))
             {
-                await _roleManager.AddClaimAsync(userRole, claim);
+                var claim = new Claim(ApplicationClaimTypes.Permission, permission);
+                await _roleManager.AddClaimAsync(role, claim);
+            }
+        }
+    }
+
+    private async Task AssignPermissionsToRoleAsync(string roleName, IEnumerable<string> permissions)
+    {
+        var role = await _roleManager.Roles.FirstOrDefaultAsync(r => r.Name == roleName && r.TenantId == null);
+        if (role == null) return;
+        
+        foreach (var permission in permissions)
+        {
+            var existingClaim = await _roleManager.GetClaimsAsync(role);
+            if (!existingClaim.Any(c => c.Type == ApplicationClaimTypes.Permission && c.Value == permission))
+            {
+                var claim = new Claim(ApplicationClaimTypes.Permission, permission);
+                await _roleManager.AddClaimAsync(role, claim);
+            }
+        }
+    }
+
+    private async Task MigrateUserTypeToRolesAsync()
+    {
+        _logger.LogInformation("Migrating UserType values to role assignments...");
+        
+        var usersWithoutRoles = await _userManager.Users
+            .Where(u => !u.UserRoles.Any())
+            .ToListAsync();
+            
+        foreach (var user in usersWithoutRoles)
+        {
+            var targetRoleName = user.UserType switch
+            {
+                UserType.PlatformOwner => RoleName.PlatformOwner,
+                UserType.TenantOwner => RoleName.TenantOwner,
+                UserType.IssueManager => RoleName.IssueManager,
+                UserType.IssueAssignee => RoleName.IssueAssignee,
+                UserType.ChatAgent => RoleName.ChatAgent,
+                UserType.ChatSupervisor => RoleName.ChatSupervisor,
+                UserType.EndUser => RoleName.EndUser,
+                UserType.ApiConsumer => RoleName.ApiConsumer,
+                _ => RoleName.EndUser // Default fallback
+            };
+            
+            try
+            {
+                var result = await _userManager.AddToRoleAsync(user, targetRoleName);
+                if (result.Succeeded)
+                {
+                    _logger.LogInformation("Migrated user {UserId} from UserType.{UserType} to role {RoleName}",
+                        user.Id, user.UserType, targetRoleName);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to migrate user {UserId} to role {RoleName}: {Errors}",
+                        user.Id, targetRoleName, string.Join(", ", result.Errors.Select(e => e.Description)));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error migrating user {UserId} from UserType.{UserType} to role {RoleName}",
+                    user.Id, user.UserType, targetRoleName);
             }
         }
     }
@@ -173,10 +355,10 @@ public class ApplicationDbContextInitializer
         };
 
         await _userManager.CreateAsync(adminUser, UserName.DefaultPassword);
-        await _userManager.AddToRoleAsync(adminUser, RoleName.Admin);
+        await _userManager.AddToRoleAsync(adminUser, RoleName.TenantOwner); // Use new role instead of legacy Admin
 
         await _userManager.CreateAsync(demoUser, UserName.DefaultPassword);
-        await _userManager.AddToRoleAsync(demoUser, RoleName.Basic);
+        await _userManager.AddToRoleAsync(demoUser, RoleName.EndUser); // Use new role instead of legacy Basic
     }
 
     private async Task SeedDataAsync()

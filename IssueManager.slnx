@@ -19,6 +19,7 @@
     <Project Path="src/Infrastructure/Infrastructure.csproj" />
     <Project Path="src/IssueManager.Shared/IssueManager.Shared.csproj" Id="d3749ef6-ae83-4a10-b8fc-0a435dfdbed5" />
     <Project Path="src/Server.UI/IssueManager.UI.csproj" />
+    <Project Path="src/WhatsApp.Api/WhatsApp.Api.csproj" />
   </Folder>
   <Folder Name="/src/Migrators/">
     <Project Path="src/Migrators/Migrators.MSSQL/Migrators.MSSQL.csproj" />

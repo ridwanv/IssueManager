@@ -61,7 +61,8 @@ public class MultiTenantUserManager : UserManager<ApplicationUser>
         var normalizedRoleNames = roles.Select(NormalizeName).ToList();
 
         var tenantRoles = await _roleManager.Roles
-            .Where(r => normalizedRoleNames.Contains(r.NormalizedName) && r.TenantId == tenantId)
+            .Where(r => normalizedRoleNames.Contains(r.NormalizedName) && 
+                (r.TenantId == null || r.TenantId == tenantId))
             .ToListAsync();
 
         if (tenantRoles.Count != roles.Count())
@@ -98,7 +99,8 @@ public class MultiTenantUserManager : UserManager<ApplicationUser>
         var normalizedRoleName = NormalizeName(roleName);
 
         var role = await _roleManager.Roles
-            .FirstOrDefaultAsync(r => r.NormalizedName == normalizedRoleName && r.TenantId == tenantId);
+            .FirstOrDefaultAsync(r => r.NormalizedName == normalizedRoleName && 
+                (r.TenantId == null || r.TenantId == tenantId));
 
         if (role == null)
         {
@@ -138,7 +140,7 @@ public class MultiTenantUserManager : UserManager<ApplicationUser>
         var normalizedRoleName = NormalizeName(roleName);
         return await _roleManager.Roles.AnyAsync(r =>
             r.NormalizedName == normalizedRoleName &&
-            r.TenantId == user.TenantId &&
+            (r.TenantId == null || r.TenantId == user.TenantId) &&
             Context.UserRoles.Any(ur => ur.UserId == user.Id && ur.RoleId == r.Id));
     }
     

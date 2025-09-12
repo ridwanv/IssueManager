@@ -131,9 +131,12 @@
 
     private async Task GetRoles(string? tenantId)
     {
+        // Get global roles (TenantId = null) for the new persona-based system
+        // Also include legacy tenant-scoped roles for backward compatibility during migration
         var roles = await RoleManager.Roles
-            .Where(x => x.TenantId == tenantId)
+            .Where(x => x.TenantId == null || x.TenantId == tenantId)
             .Select(x => x.Name)
+            .OrderBy(x => x)
             .ToListAsync();
         Roles = roles.Select(r => new CheckItem { Key = r!, Value = Model.AssignedRoles?.Contains(r) ?? false }).ToList();
     }

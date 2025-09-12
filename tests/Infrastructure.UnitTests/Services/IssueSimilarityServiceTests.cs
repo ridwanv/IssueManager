@@ -5,6 +5,7 @@ using Azure.AI.OpenAI;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 using Xunit;
 using FluentAssertions;
@@ -84,7 +85,7 @@ public class IssueSimilarityServiceTests : IDisposable
 
         var emptyIssues = new List<Issue>().AsQueryable();
         var mockDbSet = CreateMockDbSet(emptyIssues);
-        _mockDbContext.Setup(x => x.Issues).Returns(mockDbSet);
+        _mockDbContext.Setup(x => x.Issues).Returns(mockDbSet.Object);
 
         // Act
         var result = await _service.FindSimilarIssuesAsync(

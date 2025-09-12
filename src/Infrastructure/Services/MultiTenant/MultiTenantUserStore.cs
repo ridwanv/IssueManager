@@ -114,10 +114,12 @@ public class MultiTenantUserStore : UserStore<
         }
     }
 
-    // Retrieve a role entity based on the normalized role name and tenant ID
+    // Retrieve a role entity based on the normalized role name
+    // First try to find global role (TenantId = null), then fallback to tenant-scoped for legacy support
     private  Task<ApplicationRole?> GetRoleAsync(string normalizedRoleName, string tenantId, CancellationToken cancellationToken)
     {
-        return  Context.Roles.FirstOrDefaultAsync(r => r.NormalizedName == normalizedRoleName && r.TenantId == tenantId, cancellationToken);
+        return  Context.Roles.FirstOrDefaultAsync(r => r.NormalizedName == normalizedRoleName && 
+            (r.TenantId == null || r.TenantId == tenantId), cancellationToken);
     }
 
     // Retrieve a user-role relationship based on user ID and role ID

@@ -29,7 +29,9 @@
       "Bash(rm:*)",
       "Bash(mv:*)",
       "Bash(cat:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(dotnet sln:*)",
+      "WebFetch(domain:developers.facebook.com)"
     ],
     "deny": [],
     "ask": [],

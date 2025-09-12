@@ -120,8 +120,6 @@ namespace IssueManager.Bot
                 var userState = new UserState(storage);
                 services.AddSingleton(userState);
                 
-                services.AddScoped<WhatsAppMessageParser>();
-                services.AddScoped<WhatsAppApiService>();
                 
                 // Create the Conversation state passing in the storage layer.
                 var conversationState = new ConversationState(storage);

@@ -1,0 +1,104 @@
+# SaaS Multi-Tenant Conversion - Product Requirements Document
+
+## Goals and Background Context
+
+### Goals
+- Convert existing shared-database multi-tenant system to true SaaS with database-per-tenant isolation
+- Add self-service tenant provisioning and subscription management
+- Implement automated billing and usage tracking
+- Maintain existing Clean Architecture foundation and WhatsApp integration capabilities
+- Enable white-label and reseller partnerships
+- Support 1,000+ tenant organizations with high performance and security
+
+### Background Context
+The current IssueManager system uses a shared database with tenant isolation via TenantId filtering. While this works for controlled environments, true SaaS requires stronger tenant isolation, self-service onboarding, subscription management, and billing automation. The existing Clean Architecture foundation and multi-tenant infrastructure provide a solid base for SaaS conversion.
+
+## Requirements
+
+### Functional Requirements
+
+**FR1:** Self-service tenant registration with automated database provisioning and schema deployment
+**FR2:** Subscription management with multiple pricing tiers (Starter, Professional, Enterprise)
+**FR3:** Automated billing integration with usage-based pricing and subscription lifecycle management
+**FR4:** Tenant-specific custom domains and white-label branding capabilities
+**FR5:** Master admin portal for SaaS operations, tenant management, and system monitoring
+**FR6:** Automated tenant database backup, restore, and migration capabilities
+**FR7:** Usage analytics and billing metrics per tenant with API rate limiting
+**FR8:** Multi-region deployment support with tenant geo-location preferences
+**FR9:** Tenant data export/import for migration and compliance requirements
+**FR10:** Integration marketplace for third-party services and custom tenant configurations
+
+### Non-Functional Requirements
+
+**NFR1:** Database provisioning must complete within 60 seconds for new tenant registration
+**NFR2:** System must support 1,000+ active tenants with 99.9% uptime SLA
+**NFR3:** Tenant isolation must be complete with no cross-tenant data access possible
+**NFR4:** Billing and subscription changes must be reflected in real-time
+**NFR5:** Master database performance must remain optimal with high tenant volumes
+**NFR6:** Data compliance with GDPR, SOC2, and regional data residency requirements
+**NFR7:** Automated scaling for tenant databases based on usage patterns
+**NFR8:** Disaster recovery with RPO < 1 hour and RTO < 4 hours per tenant
+
+## Technical Architecture
+
+### Master Database Components
+- Tenant registry and metadata
+- Subscription and billing information
+- Usage analytics and metrics
+- System configuration and templates
+- User authentication and authorization
+
+### Tenant Database Architecture
+- Complete schema replication per tenant
+- Independent scaling and backup strategies
+- Tenant-specific configurations and customizations
+- Isolated data with no shared tables
+
+### Connection Management Strategy
+- Dynamic connection string resolution based on tenant context
+- Connection pooling optimization for high tenant volumes
+- Database proxy layer for routing and monitoring
+- Automated failover and load balancing
+
+## Epic List
+
+### Epic 1: Master Database & Tenant Registry
+Implement centralized tenant management, subscription tracking, and database provisioning infrastructure.
+
+### Epic 2: Dynamic Database Connection Management
+Create tenant-aware database context factory and connection routing for database-per-tenant architecture.
+
+### Epic 3: Self-Service Tenant Provisioning
+Build automated tenant registration, database creation, and schema deployment workflows.
+
+### Epic 4: Subscription & Billing Management
+Integrate payment processing, subscription lifecycle management, and usage-based billing.
+
+### Epic 5: SaaS Operations & Monitoring
+Develop master admin portal, tenant analytics, and system health monitoring capabilities.
+
+## Implementation Strategy
+
+### Phase 1: Foundation (3-4 months)
+- Master database design and implementation
+- Dynamic connection management
+- Tenant provisioning automation
+- Basic subscription management
+
+### Phase 2: Self-Service Portal (2-3 months)
+- Tenant registration and onboarding
+- Subscription management UI
+- Basic billing integration
+- Tenant admin features
+
+### Phase 3: Advanced SaaS Features (3-4 months)
+- Usage analytics and reporting
+- White-label and custom domains
+- Integration marketplace
+- Advanced billing and pricing models
+
+### Phase 4: Scale & Optimize (2-3 months)
+- Multi-region deployment
+- Performance optimization
+- Advanced monitoring and alerting
+- Enterprise features and compliance

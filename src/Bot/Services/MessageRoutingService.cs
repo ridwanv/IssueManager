@@ -136,49 +136,6 @@ namespace IssueManager.Bot.Services
             }
         }
 
-        /// <summary>
-        /// Routes message based on conversation state and content
-        /// </summary>
-        /// <param name="turnContext">Bot turn context</param>
-        /// <param name="messageData">Parsed message data</param>
-        /// <returns>Routing decision</returns>
-        public async Task<MessageRoutingDecision> RouteMessageAsync(ITurnContext turnContext, WhatsAppMessageData messageData)
-        {
-            try
-            {
-                var isNewConversation = await IsNewConversationAsync(turnContext);
-                var userProfile = await UpdateUserActivityAsync(turnContext, messageData.From);
-                var conversationContext = await GetConversationContextAsync(turnContext);
-
-                var routingDecision = new MessageRoutingDecision
-                {
-                    IsNewConversation = isNewConversation,
-                    UserProfile = userProfile,
-                    ConversationContext = conversationContext,
-                    MessageType = DetermineMessageIntent(messageData.Text),
-                    RequiresGreeting = isNewConversation,
-                    RequiresTypingIndicator = true,
-                    RequiresReadReceipt = true
-                };
-
-                _logger.LogInformation("Message routed for user {PhoneNumber}: New={IsNew}, Intent={Intent}", 
-                    messageData.From, isNewConversation, routingDecision.MessageType);
-
-                return routingDecision;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error routing message from {From}", messageData.From);
-                return new MessageRoutingDecision
-                {
-                    IsNewConversation = true,
-                    MessageType = MessageIntent.GeneralInquiry,
-                    RequiresGreeting = true,
-                    RequiresTypingIndicator = true,
-                    RequiresReadReceipt = true
-                };
-            }
-        }
 
         private MessageIntent DetermineMessageIntent(string? messageText)
         {

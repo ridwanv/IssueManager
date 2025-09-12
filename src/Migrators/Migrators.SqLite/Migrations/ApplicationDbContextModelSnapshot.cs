@@ -1579,6 +1579,9 @@ namespace CleanArchitecture.Blazor.Migrators.SqLite.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("UserType")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
