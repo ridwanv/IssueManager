@@ -2,7 +2,7 @@ name: Deploy Server.UI to Azure Web App
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 0.0.1 ]
     paths:
       - 'src/Server.UI/**'
       - 'src/Application/**'
