@@ -377,6 +377,10 @@ public class ApplicationDbContextInitializer
             _logger.LogError("Failed to create demo user: {Errors}", string.Join(", ", demoResult.Errors.Select(e => e.Description)));
             throw new InvalidOperationException($"Failed to create demo user: {string.Join(", ", demoResult.Errors.Select(e => e.Description))}");
         }
+        
+        // Save changes to ensure users are persisted before SeedDataAsync
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Users saved to database successfully");
     }
 
     private async Task SeedDataAsync()
