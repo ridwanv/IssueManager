@@ -65,9 +65,9 @@ jobs:
 
 
     - name: Restore dependencies
-      run: dotnet restore  CleanArchitecture.Blazor.slnx
+      run: dotnet restore IssueManager.slnx
     - name: Build
-      run: dotnet build CleanArchitecture.Blazor.slnx --configuration Debug --no-restore
+      run: dotnet build IssueManager.slnx --configuration Debug --no-restore
    
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
