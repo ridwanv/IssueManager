@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using CleanArchitecture.Blazor.Domain.Entities;
+using CleanArchitecture.Blazor.Domain.Enums;
 
 namespace CleanArchitecture.Blazor.Domain.Identity;
 
@@ -37,6 +38,7 @@ public class ApplicationUser : IdentityUser
     public DateTime? LastModified { get; set; }
     public string? TimeZoneId { get; set; }
     public string? LanguageCode { get; set; }
+    public UserType UserType { get; set; } = UserType.EndUser;
 
     // Agent relationship
     public virtual ICollection<Agent> Agents { get; set; } = new HashSet<Agent>();
