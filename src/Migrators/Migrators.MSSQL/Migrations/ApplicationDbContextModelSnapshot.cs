@@ -2038,17 +2038,17 @@ namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
                         .WithMany()
                         .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "DuplicateOf")
                         .WithMany()
                         .HasForeignKey("DuplicateOfId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Contact", "ReporterContact")
                         .WithMany()
                         .HasForeignKey("ReporterContactId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Conversation");
 

@@ -357,7 +357,7 @@ namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
                         column: x => x.ConversationId,
                         principalTable: "Conversations",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.NoAction);
                 });
 
             migrationBuilder.CreateIndex(
@@ -550,7 +550,7 @@ namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
                 column: "ConversationId",
                 principalTable: "Conversations",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.NoAction);
         }
 
         /// <inheritdoc />

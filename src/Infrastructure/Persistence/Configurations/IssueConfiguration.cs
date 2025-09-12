@@ -76,17 +76,17 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.HasOne(e => e.ReporterContact)
             .WithMany()
             .HasForeignKey(e => e.ReporterContactId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
             
         builder.HasOne(e => e.DuplicateOf)
             .WithMany()
             .HasForeignKey(e => e.DuplicateOfId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
             
         builder.HasOne(e => e.Conversation)
             .WithMany()
             .HasForeignKey(e => e.ConversationId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
         
         // Configure collections
         builder.HasMany(e => e.Attachments)

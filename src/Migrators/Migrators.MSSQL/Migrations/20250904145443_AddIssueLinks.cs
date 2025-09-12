@@ -56,20 +56,17 @@ namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
                         name: "FK_Issues_Contacts_ReporterContactId",
                         column: x => x.ReporterContactId,
                         principalTable: "Contacts",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_Issues_Issues_DuplicateOfId",
                         column: x => x.DuplicateOfId,
                         principalTable: "Issues",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_Issues_Products_ProductId",
                         column: x => x.ProductId,
                         principalTable: "Products",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -104,7 +101,7 @@ namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
                         column: x => x.IssueId1,
                         principalTable: "Issues",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.NoAction);
                 });
 
             migrationBuilder.CreateTable(
@@ -137,7 +134,7 @@ namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
                         column: x => x.IssueId1,
                         principalTable: "Issues",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.NoAction);
                 });
 
             migrationBuilder.CreateTable(

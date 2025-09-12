@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250912140504_sqlmigration")]
-    partial class sqlmigration
+    [Migration("20250912142025_FreshMSSQLMigration")]
+    partial class FreshMSSQLMigration
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -2041,17 +2041,17 @@ namespace CleanArchitecture.Blazor.Migrators.MSSQL.Migrations
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Conversation", "Conversation")
                         .WithMany()
                         .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Issue", "DuplicateOf")
                         .WithMany()
                         .HasForeignKey("DuplicateOfId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("CleanArchitecture.Blazor.Domain.Entities.Contact", "ReporterContact")
                         .WithMany()
                         .HasForeignKey("ReporterContactId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Conversation");
 
