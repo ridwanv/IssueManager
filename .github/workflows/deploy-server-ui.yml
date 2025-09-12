@@ -43,12 +43,21 @@ jobs:
     - name: Publish application
       run: dotnet publish src/Server.UI/IssueManager.UI.csproj --configuration Release --output ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} --no-build
       
+    - name: Install EF Core tools
+      run: dotnet tool install --global dotnet-ef --version 9.0.0
+      
     - name: Login to Azure
       uses: azure/login@v2
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        
+    - name: Run Database Migrations
+      run: |
+        dotnet ef database update --project src/Migrators/Migrators.MSSQL --startup-project src/Server.UI --connection "${{ secrets.AZURE_SQL_CONNECTION_STRING }}" --verbose
+      env:
+        ASPNETCORE_ENVIRONMENT: Production
         
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
